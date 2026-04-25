@@ -1,4 +1,5 @@
 const Team = require('../../models/Team');
+const User = require('../../models/User');
 const { AppError } = require('../../middlewares/errorHandler');
 
 const createTeam = async (data, createdBy) => {
@@ -69,4 +70,17 @@ const deleteTeam = async (id, userId) => {
   await team.save();
 };
 
-module.exports = { createTeam, getTeams, getTeamById, updateTeam, addPlayer, removePlayer, deleteTeam };
+const searchPlayers = async (query) => {
+  const { q } = query;
+  if (!q || q.trim().length < 2) throw new AppError('Query must be at least 2 characters', 400, 'VALIDATION_ERROR');
+
+  const regex = new RegExp(q.trim(), 'i');
+  const players = await User.find({
+    $or: [{ email: regex }, { phone: regex }, { name: regex }],
+    isActive: true,
+  }).select('name email phone avatar role').limit(20);
+
+  return players;
+};
+
+module.exports = { createTeam, getTeams, getTeamById, updateTeam, addPlayer, removePlayer, deleteTeam, searchPlayers };

@@ -50,4 +50,11 @@ const deleteTeam = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createTeam, getTeams, getTeam, updateTeam, addPlayer, removePlayer, deleteTeam };
+const searchPlayers = async (req, res, next) => {
+  try {
+    const players = await teamsService.searchPlayers(req.query);
+    success(res, { players });
+  } catch (err) { next(err); }
+};
+
+module.exports = { createTeam, getTeams, getTeam, updateTeam, addPlayer, removePlayer, deleteTeam, searchPlayers };

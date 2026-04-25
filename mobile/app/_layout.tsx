@@ -18,9 +18,7 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      connectSocket();
-    }
+    if (isAuthenticated) connectSocket();
   }, [isAuthenticated]);
 
   return (
@@ -28,10 +26,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="light" backgroundColor="#1E3A5F" />
         <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="match" />
           <Stack.Screen name="team" />
+          <Stack.Screen name="tournament" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

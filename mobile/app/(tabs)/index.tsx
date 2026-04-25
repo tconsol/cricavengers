@@ -5,18 +5,55 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@store/authStore';
 import { useMatchStore } from '@store/matchStore';
+import { useTournamentStore } from '@store/tournamentStore';
 import MatchCard from '@components/match/MatchCard';
+
+function TournamentBadge({ item }: { item: any }) {
+  const stateColors: Record<string, string> = {
+    in_progress: '#2563EB',
+    registration_open: '#059669',
+    completed: '#7C3AED',
+  };
+  const color = stateColors[item.state] || '#6B7280';
+  const label = item.state === 'in_progress' ? 'Live'
+    : item.state === 'registration_open' ? 'Open' : 'Done';
+
+  return (
+    <TouchableOpacity
+      className="bg-white rounded-2xl p-4 mr-3 shadow-sm"
+      style={{ width: 200 }}
+      onPress={() => router.push(`/tournament/${item._id}` as any)}
+      activeOpacity={0.8}
+    >
+      <View className="flex-row items-start justify-between mb-2">
+        <Text className="font-bold text-gray-800 flex-1 mr-2 text-sm" numberOfLines={2}>{item.name}</Text>
+        <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: color + '20' }}>
+          <Text className="text-xs font-bold" style={{ color }}>{label}</Text>
+        </View>
+      </View>
+      <Text className="text-xs text-gray-400">
+        {item.teams?.length || 0}/{item.maxTeams} teams · {item.matchFormat}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function HomeScreen() {
   const { user } = useAuthStore();
   const { liveMatches, matches, fetchLiveMatches, fetchMatches, isLoading } = useMatchStore();
+  const { tournaments, fetchTournaments } = useTournamentStore();
 
   const load = () => {
     fetchLiveMatches();
     fetchMatches({ limit: '5' });
+    fetchTournaments({ limit: '6' });
   };
 
   useEffect(() => { load(); }, []);
+
+  const activeTournaments = tournaments.filter((t) =>
+    ['in_progress', 'registration_open'].includes(t.state),
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
@@ -64,23 +101,47 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* Active Tournaments */}
+        {activeTournaments.length > 0 && (
+          <View className="pt-5 px-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-lg font-bold text-gray-800">🏆 Tournaments</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/tournaments')}>
+                <Text className="text-primary text-sm font-semibold">See all</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={activeTournaments}
+              keyExtractor={(t) => t._id}
+              renderItem={({ item }) => <TournamentBadge item={item} />}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+            />
+          </View>
+        )}
+
         {/* Quick Actions */}
-        <View className="px-4 pt-6 pb-2">
+        <View className="px-4 pt-5 pb-2">
           <Text className="text-lg font-bold text-gray-800 mb-3">Quick Actions</Text>
-          <View className="flex-row gap-3">
+          <View className="flex-row flex-wrap gap-3">
             {[
-              { icon: 'baseball',  label: 'Score Match', color: '#1E3A5F', route: '/match/create' },
-              { icon: 'people',    label: 'Create Team', color: '#059669', route: '/team/create' },
-              { icon: 'search',    label: 'Search',      color: '#7C3AED', route: '/search' },
-              { icon: 'trophy',    label: 'Leaderboard', color: '#D97706', route: '/(tabs)/leaderboard' },
+              { icon: 'baseball',  label: 'Score Match',  color: '#1E3A5F', route: '/match/create' },
+              { icon: 'trophy',    label: 'Tournament',   color: '#7C3AED', route: '/tournament/create' },
+              { icon: 'people',    label: 'Create Team',  color: '#059669', route: '/team/create' },
+              { icon: 'bar-chart', label: 'Stats',        color: '#D97706', route: '/(tabs)/leaderboard' },
             ].map((item) => (
               <TouchableOpacity
                 key={item.label}
-                className="flex-1 rounded-2xl py-4 items-center"
-                style={{ backgroundColor: item.color + '15', borderWidth: 1, borderColor: item.color + '30' }}
+                className="rounded-2xl py-4 items-center"
+                style={{
+                  width: '47%',
+                  backgroundColor: item.color + '15',
+                  borderWidth: 1,
+                  borderColor: item.color + '30',
+                }}
                 onPress={() => router.push(item.route as any)}
               >
-                <Ionicons name={item.icon as any} size={24} color={item.color} />
+                <Ionicons name={item.icon as any} size={26} color={item.color} />
                 <Text className="text-xs font-semibold mt-1" style={{ color: item.color }}>
                   {item.label}
                 </Text>

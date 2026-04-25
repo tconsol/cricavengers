@@ -89,6 +89,7 @@ const matchSchema = new mongoose.Schema({
     role: { type: String, enum: ['scorer', 'umpire', 'organizer', 'viewer'] },
   }],
   isPublic: { type: Boolean, default: true },
+  tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

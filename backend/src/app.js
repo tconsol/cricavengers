@@ -17,6 +17,7 @@ const scoringRoutes = require('./modules/scoring/scoring.routes');
 const statsRoutes = require('./modules/stats/stats.routes');
 const searchRoutes = require('./modules/search/search.routes');
 const notificationRoutes = require('./modules/notifications/notifications.routes');
+const tournamentRoutes  = require('./modules/tournaments/tournaments.routes');
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use('/api/v1/scoring', scoringRoutes);
 app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/tournaments',  tournamentRoutes);
 
 // 404
 app.use((req, res) => {

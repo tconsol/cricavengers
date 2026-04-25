@@ -1,8 +1,8 @@
 import { API_BASE_URL } from '@constants/index';
 
-// Lazy import to break the authStore <-> api circular dependency.
-// authStore imports api; api only reads store state at call time, never at module load.
-const getAuthStore = () => require('@store/authStore').getAuthStore();
+// getState() is called at request time, never at import time, so the
+// authStore -> api -> authStore cycle is safe at runtime.
+import { useAuthStore } from '@store/authStore';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -44,7 +44,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     url += `?${qs}`;
   }
 
-  const { accessToken } = getAuthStore();
+  const { accessToken } = useAuthStore.getState();
 
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ async function _handleTokenRefresh<T>(endpoint: string, options: RequestOptions)
   }
 
   isRefreshing = true;
-  const { refreshToken, setTokens, logout } = getAuthStore();
+  const { refreshToken, setTokens, logout } = useAuthStore.getState();
 
   try {
     const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -127,6 +127,8 @@ export const api = {
             request<T>(endpoint, { method: 'PUT', body }),
   delete: <T>(endpoint: string) =>
             request<T>(endpoint, { method: 'DELETE' }),
+  patch:  <T>(endpoint: string, body: Record<string, unknown>) =>
+            request<T>(endpoint, { method: 'PATCH', body }),
   postNoAuth: <T>(endpoint: string, body: Record<string, unknown>) =>
             request<T>(endpoint, { method: 'POST', body, skipAuth: true }),
 };

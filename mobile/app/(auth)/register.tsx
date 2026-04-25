@@ -1,25 +1,30 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView, Alert,
+  KeyboardAvoidingView, Platform, ScrollView, Alert, TextInput as RNTextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@store/authStore';
 
 export default function RegisterScreen() {
   const { register } = useAuthStore();
-  const [form, setForm]       = useState({ name: '', email: '', password: '', confirm: '' });
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors]   = useState<Record<string, string>>({});
+  const [name,     setName]     = useState('');
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm,  setConfirm]  = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [errors,   setErrors]   = useState<Record<string, string>>({});
 
-  const set = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
+  const emailRef    = useRef<RNTextInput>(null);
+  const passwordRef = useRef<RNTextInput>(null);
+  const confirmRef  = useRef<RNTextInput>(null);
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.name.trim() || form.name.trim().length < 2) e.name = 'Name must be at least 2 characters';
-    if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) e.email = 'Valid email required';
-    if (form.password.length < 8) e.password = 'Password must be 8+ characters';
-    if (form.password !== form.confirm) e.confirm = 'Passwords do not match';
+    if (!name.trim() || name.trim().length < 2) e.name = 'Name must be at least 2 characters';
+    if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) e.email = 'Valid email required';
+    if (password.length < 8) e.password = 'Password must be 8+ characters';
+    if (password !== confirm) e.confirm = 'Passwords do not match';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -28,64 +33,127 @@ export default function RegisterScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      await register(form.name.trim(), form.email.trim().toLowerCase(), form.password);
+      await register(name.trim(), email.trim().toLowerCase(), password);
       router.replace('/(tabs)');
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.message);
+      Alert.alert('Registration Failed', err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
   };
 
-  const Field = ({ label, field, ...props }: any) => (
-    <View className="mb-4">
-      <Text className="text-sm font-semibold text-gray-600 mb-1">{label}</Text>
-      <TextInput
-        className={`border rounded-xl px-4 py-3 text-base text-gray-900 ${
-          errors[field] ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-gray-50'
-        }`}
-        value={form[field as keyof typeof form]}
-        onChangeText={(v) => set(field, v)}
-        {...props}
-      />
-      {errors[field] ? <Text className="text-red-500 text-xs mt-1">{errors[field]}</Text> : null}
-    </View>
-  );
+  const fieldStyle = (field: string) =>
+    `border rounded-xl px-4 py-3 text-base text-gray-900 ${
+      errors[field] ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-gray-50'
+    }`;
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-primary"
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View className="items-center pt-16 pb-8 px-6">
-          <Text className="text-3xl font-bold text-white">Create Account</Text>
-          <Text className="text-blue-200 mt-1">Start scoring matches today</Text>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: '#1E3A5F' }}
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ alignItems: 'center', paddingTop: 64, paddingBottom: 32, paddingHorizontal: 24 }}>
+          <Text style={{ fontSize: 30, fontWeight: 'bold', color: '#fff' }}>Create Account</Text>
+          <Text style={{ color: '#bfdbfe', marginTop: 4 }}>Start scoring matches today</Text>
         </View>
 
-        <View className="mx-4 bg-white rounded-3xl px-6 py-8">
-          <Field label="Full Name" field="name" placeholder="Virat Kohli" autoCapitalize="words" />
-          <Field label="Email" field="email" placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
-          <Field label="Password" field="password" placeholder="••••••••" secureTextEntry />
-          <Field label="Confirm Password" field="confirm" placeholder="••••••••" secureTextEntry />
+        <View style={{ marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 24, paddingVertical: 32 }}>
+          {/* Full Name */}
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Full Name</Text>
+            <TextInput
+              className={fieldStyle('name')}
+              placeholder="Virat Kohli"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => emailRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+            {errors.name ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.name}</Text> : null}
+          </View>
+
+          {/* Email */}
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Email</Text>
+            <TextInput
+              ref={emailRef}
+              className={fieldStyle('email')}
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+            {errors.email ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.email}</Text> : null}
+          </View>
+
+          {/* Password */}
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Password</Text>
+            <TextInput
+              ref={passwordRef}
+              className={fieldStyle('password')}
+              placeholder="••••••••"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              returnKeyType="next"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+            {errors.password ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.password}</Text> : null}
+          </View>
+
+          {/* Confirm Password */}
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Confirm Password</Text>
+            <TextInput
+              ref={confirmRef}
+              className={fieldStyle('confirm')}
+              placeholder="••••••••"
+              value={confirm}
+              onChangeText={setConfirm}
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleRegister}
+            />
+            {errors.confirm ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.confirm}</Text> : null}
+          </View>
 
           <TouchableOpacity
-            className={`rounded-xl py-4 items-center mt-2 ${loading ? 'bg-primary-300' : 'bg-primary'}`}
+            style={{
+              borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8,
+              backgroundColor: loading ? '#6B7280' : '#1E3A5F',
+            }}
             onPress={handleRegister}
             disabled={loading}
+            activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-lg">
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 17 }}>
               {loading ? 'Creating account...' : 'Create Account'}
             </Text>
           </TouchableOpacity>
 
-          <View className="flex-row justify-center mt-6">
-            <Text className="text-gray-500">Already have an account? </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 24 }}>
+            <Text style={{ color: '#6B7280' }}>Already have an account? </Text>
             <TouchableOpacity onPress={() => router.back()}>
-              <Text className="text-primary font-bold">Sign in</Text>
+              <Text style={{ color: '#1E3A5F', fontWeight: 'bold' }}>Sign in</Text>
             </TouchableOpacity>
           </View>
         </View>
+        <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
