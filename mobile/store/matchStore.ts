@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@services/api';
+import { onEvent } from '@services/socket';
 
 interface Team {
   _id: string;
@@ -43,6 +44,7 @@ interface MatchState {
   startInnings: (matchId: string, data: Record<string, unknown>) => Promise<void>;
   clearCurrentMatch: () => void;
   setCurrentMatch: (match: Match) => void;
+  initSocketListeners: () => () => void;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
@@ -106,4 +108,34 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
   clearCurrentMatch: () => set({ currentMatch: null }),
   setCurrentMatch: (match) => set({ currentMatch: match }),
+
+  initSocketListeners: () => {
+    const unsubCreated = onEvent('MATCH_CREATED', (data: any) => {
+      const match: Match = data.match;
+      set((s) => {
+        const exists = s.matches.some((m) => m._id === match._id);
+        return exists ? {} : { matches: [match, ...s.matches] };
+      });
+    });
+
+    const unsubState = onEvent('MATCH_STATE_CHANGED', (data: any) => {
+      const updated: Match = data.match;
+      set((s) => ({
+        matches: s.matches.map((m) => m._id === updated._id ? { ...m, ...updated } : m),
+        liveMatches: s.liveMatches.map((m) => m._id === updated._id ? { ...m, ...updated } : m),
+        currentMatch: s.currentMatch?._id === updated._id ? { ...s.currentMatch, ...updated } : s.currentMatch,
+      }));
+    });
+
+    const unsubCompleted = onEvent('MATCH_COMPLETED', (data: any) => {
+      set((s) => ({
+        liveMatches: s.liveMatches.filter((m) => m._id !== data.matchId),
+        matches: s.matches.map((m) =>
+          m._id === data.matchId ? { ...m, state: 'COMPLETED', result: data.result } : m
+        ),
+      }));
+    });
+
+    return () => { unsubCreated(); unsubState(); unsubCompleted(); };
+  },
 }));

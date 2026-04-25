@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { useAuthStore } from '@store/authStore';
 import { useMatchStore } from '@store/matchStore';
 import { useTournamentStore } from '@store/tournamentStore';
 import MatchCard from '@components/match/MatchCard';
+import DrawerMenu from '@components/ui/DrawerMenu';
 
 function TournamentBadge({ item }: { item: any }) {
   const stateColors: Record<string, string> = {
@@ -42,6 +43,7 @@ export default function HomeScreen() {
   const { user } = useAuthStore();
   const { liveMatches, matches, fetchLiveMatches, fetchMatches, isLoading } = useMatchStore();
   const { tournaments, fetchTournaments } = useTournamentStore();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = () => {
     fetchLiveMatches();
@@ -57,11 +59,21 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
+      <DrawerMenu isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
       {/* Header */}
-      <View className="flex-row items-center justify-between px-5 py-4">
-        <View>
-          <Text className="text-white text-base">Hello,</Text>
-          <Text className="text-white text-2xl font-bold">{user?.name?.split(' ')[0]} 👋</Text>
+      <View className="flex-row items-center justify-between px-4 py-4">
+        <View className="flex-row items-center gap-3">
+          <TouchableOpacity
+            onPress={() => setDrawerOpen(true)}
+            style={{ width: 38, height: 38, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)' }}
+          >
+            <Ionicons name="menu" size={22} color="#fff" />
+          </TouchableOpacity>
+          <View>
+            <Text className="text-white text-base">Hello,</Text>
+            <Text className="text-white text-2xl font-bold">{user?.name?.split(' ')[0]} 👋</Text>
+          </View>
         </View>
         <TouchableOpacity
           className="bg-accent rounded-full px-4 py-2 flex-row items-center gap-1"
@@ -163,6 +175,7 @@ export default function HomeScreen() {
               key={match._id}
               match={match}
               onPress={() => router.push(`/match/${match._id}/live`)}
+              isOwner={user?._id === (match.createdBy?._id || match.createdBy)}
             />
           ))}
           {matches.length === 0 && !isLoading && (

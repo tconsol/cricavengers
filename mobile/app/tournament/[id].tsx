@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Alert, FlatList, RefreshControl,
+  Alert, FlatList, RefreshControl, TextInput,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -90,9 +90,12 @@ function FixturesTab({ fixtures, isOrganizer, onUpdateFixture }: {
 }) {
   if (!fixtures.length) {
     return (
-      <View className="items-center py-12">
-        <Text className="text-3xl mb-2">📅</Text>
-        <Text className="text-gray-400">No fixtures yet. Generate them from the Overview tab.</Text>
+      <View style={{ alignItems: 'center', paddingVertical: 52 }}>
+        <Text style={{ fontSize: 52, marginBottom: 12 }}>📅</Text>
+        <Text style={{ fontWeight: '700', color: '#374151', fontSize: 16, marginBottom: 6 }}>No Fixtures Yet</Text>
+        <Text style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center' }}>
+          Go to Overview tab and tap "Generate Fixtures" to create the schedule.
+        </Text>
       </View>
     );
   }
@@ -103,63 +106,177 @@ function FixturesTab({ fixtures, isOrganizer, onUpdateFixture }: {
     grouped[f.round].push(f);
   });
 
-  const statusColor: Record<string, string> = {
-    scheduled: '#6B7280',
-    in_progress: '#2563EB',
-    completed: '#059669',
-    cancelled: '#DC2626',
+  const getStageLabel = (f: Fixture) => {
+    if (f.stage === 'final') return '🏆 Final';
+    if (f.stage === 'semi_final') return '⚔️ Semi Finals';
+    if (f.stage === 'quarter_final') return '🎯 Quarter Finals';
+    if (f.stage === 'third_place') return '🥉 Third Place';
+    if (f.group) return `Group ${f.group}`;
+    return `Round ${f.round}`;
+  };
+
+  const statusStyles: Record<string, { bg: string; color: string; label: string }> = {
+    scheduled:   { bg: '#F3F4F6', color: '#6B7280',  label: 'Scheduled' },
+    in_progress: { bg: '#DBEAFE', color: '#2563EB',  label: 'Live' },
+    completed:   { bg: '#DCFCE7', color: '#16A34A',  label: 'Completed' },
+    cancelled:   { bg: '#FEE2E2', color: '#DC2626',  label: 'Cancelled' },
   };
 
   return (
     <View>
-      {Object.keys(grouped).sort((a, b) => +a - +b).map((round) => (
-        <View key={round} className="mb-4">
-          <Text className="text-sm font-bold text-gray-500 uppercase mb-2">
-            {grouped[+round][0]?.group ? `Group ${grouped[+round][0].group} · ` : ''}
-            {grouped[+round][0]?.stage === 'final' ? 'Final' :
-             grouped[+round][0]?.stage === 'semi_final' ? 'Semi Final' :
-             grouped[+round][0]?.stage === 'quarter_final' ? 'Quarter Final' :
-             `Round ${round}`}
-          </Text>
-          {grouped[+round].map((f) => {
-            const match = f.matchId;
-            const colorDot = statusColor[f.status] || '#6B7280';
-            return (
-              <TouchableOpacity
-                key={f._id}
-                className="bg-white rounded-xl px-4 py-3 mb-2 shadow-sm"
-                onPress={() => match?._id ? router.push(`/match/${match._id}/live` as any) : null}
-                activeOpacity={match?._id ? 0.7 : 1}
-              >
-                <View className="flex-row items-center justify-between mb-1">
-                  <View className="flex-row items-center gap-1.5">
-                    <View className="w-2 h-2 rounded-full" style={{ backgroundColor: colorDot }} />
-                    <Text className="text-xs font-semibold capitalize" style={{ color: colorDot }}>
-                      {f.status.replace('_', ' ')}
-                    </Text>
+      {Object.keys(grouped).sort((a, b) => +a - +b).map((round) => {
+        const roundFixtures = grouped[+round];
+        const stageLabel = getStageLabel(roundFixtures[0]);
+
+        return (
+          <View key={round} style={{ marginBottom: 24 }}>
+            {/* Round header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#6B7280', letterSpacing: 0.8 }}>
+                {stageLabel.toUpperCase()}
+              </Text>
+              <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+            </View>
+
+            {roundFixtures.map((f) => {
+              const match = f.matchId as any;
+              const ss = statusStyles[f.status] || statusStyles.scheduled;
+              const isLive = f.status === 'in_progress';
+              const isCompleted = f.status === 'completed';
+              const teamA = f.teamA as any;
+              const teamB = f.teamB as any;
+
+              return (
+                <TouchableOpacity
+                  key={f._id}
+                  onPress={() => match?._id ? router.push(`/match/${match._id}/live` as any) : null}
+                  activeOpacity={match?._id ? 0.75 : 1}
+                  style={{
+                    backgroundColor: '#fff',
+                    borderRadius: 18,
+                    marginBottom: 12,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    elevation: 3,
+                    borderWidth: isLive ? 1.5 : 0,
+                    borderColor: isLive ? '#2563EB' : 'transparent',
+                  }}
+                >
+                  {/* Status bar */}
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    paddingHorizontal: 14, paddingVertical: 9,
+                    backgroundColor: isLive ? '#EFF6FF' : '#FAFAFA',
+                    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+                    borderTopLeftRadius: 18, borderTopRightRadius: 18,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {isLive && (
+                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#2563EB' }} />
+                      )}
+                      <View style={{ backgroundColor: ss.bg, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 }}>
+                        <Text style={{ color: ss.color, fontSize: 11, fontWeight: '700' }}>{ss.label}</Text>
+                      </View>
+                    </View>
+                    {f.scheduledAt ? (
+                      <Text style={{ color: '#9CA3AF', fontSize: 11 }}>
+                        {new Date(f.scheduledAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        {' · '}
+                        {new Date(f.scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    ) : (
+                      <Text style={{ color: '#D1D5DB', fontSize: 11 }}>Date TBD</Text>
+                    )}
                   </View>
-                  {f.scheduledAt && (
-                    <Text className="text-xs text-gray-400">
-                      {new Date(f.scheduledAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  )}
-                </View>
-                <View className="flex-row items-center justify-between">
-                  <Text className="font-semibold text-gray-800 flex-1">{f.teamA?.name}</Text>
-                  <Text className="text-gray-400 text-xs mx-2">vs</Text>
-                  <Text className="font-semibold text-gray-800 flex-1 text-right">{f.teamB?.name}</Text>
-                </View>
-                {f.result?.scoreA && (
-                  <View className="flex-row items-center justify-between mt-1">
-                    <Text className="text-sm font-bold text-primary">{f.result.scoreA}</Text>
-                    <Text className="text-sm font-bold text-primary">{f.result.scoreB}</Text>
+
+                  {/* Teams + scores */}
+                  <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
+                    {/* Team A */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                      <View style={{
+                        width: 38, height: 38, borderRadius: 19,
+                        backgroundColor: (teamA?.color || '#1E3A5F') + '20',
+                        alignItems: 'center', justifyContent: 'center', marginRight: 10,
+                      }}>
+                        <Text style={{ fontWeight: '900', fontSize: 11, color: teamA?.color || '#1E3A5F' }}>
+                          {teamA?.shortName || teamA?.name?.slice(0, 2)?.toUpperCase() || 'A'}
+                        </Text>
+                      </View>
+                      <Text style={{ flex: 1, fontWeight: '700', color: '#111827', fontSize: 14 }} numberOfLines={1}>
+                        {teamA?.name || 'Team A'}
+                      </Text>
+                      {f.result?.scoreA ? (
+                        <Text style={{ fontWeight: '900', color: '#111827', fontSize: 16 }}>{f.result.scoreA}</Text>
+                      ) : (
+                        <Text style={{ color: '#D1D5DB', fontSize: 16 }}>—</Text>
+                      )}
+                    </View>
+
+                    {/* VS divider */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                      <View style={{ flex: 1, height: 1, backgroundColor: '#F3F4F6' }} />
+                      <View style={{
+                        marginHorizontal: 10, backgroundColor: '#F9FAFB',
+                        borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3,
+                      }}>
+                        <Text style={{ color: '#9CA3AF', fontSize: 11, fontWeight: '700' }}>VS</Text>
+                      </View>
+                      <View style={{ flex: 1, height: 1, backgroundColor: '#F3F4F6' }} />
+                    </View>
+
+                    {/* Team B */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{
+                        width: 38, height: 38, borderRadius: 19,
+                        backgroundColor: (teamB?.color || '#7C3AED') + '20',
+                        alignItems: 'center', justifyContent: 'center', marginRight: 10,
+                      }}>
+                        <Text style={{ fontWeight: '900', fontSize: 11, color: teamB?.color || '#7C3AED' }}>
+                          {teamB?.shortName || teamB?.name?.slice(0, 2)?.toUpperCase() || 'B'}
+                        </Text>
+                      </View>
+                      <Text style={{ flex: 1, fontWeight: '700', color: '#111827', fontSize: 14 }} numberOfLines={1}>
+                        {teamB?.name || 'Team B'}
+                      </Text>
+                      {f.result?.scoreB ? (
+                        <Text style={{ fontWeight: '900', color: '#111827', fontSize: 16 }}>{f.result.scoreB}</Text>
+                      ) : (
+                        <Text style={{ color: '#D1D5DB', fontSize: 16 }}>—</Text>
+                      )}
+                    </View>
                   </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ))}
+
+                  {/* Footer: winner or tap CTA */}
+                  <View style={{
+                    paddingHorizontal: 14, paddingVertical: 10,
+                    backgroundColor: '#F9FAFB',
+                    borderTopWidth: 1, borderTopColor: '#F3F4F6',
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    borderBottomLeftRadius: 18, borderBottomRightRadius: 18,
+                  }}>
+                    {isCompleted && (f.result?.winner as any)?.name ? (
+                      <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '700' }}>
+                        🏆 {(f.result!.winner as any).name} won
+                      </Text>
+                    ) : isCompleted ? (
+                      <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '600' }}>Match completed</Text>
+                    ) : match?._id ? (
+                      <Text style={{ color: '#9CA3AF', fontSize: 12 }}>Tap to view match</Text>
+                    ) : (
+                      <Text style={{ color: '#D1D5DB', fontSize: 12 }}>Match not created yet</Text>
+                    )}
+                    {match?._id && (
+                      <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -263,39 +380,97 @@ function AddTeamModal({
   onClose: () => void;
   onAdd: (teamId: string) => void;
 }) {
+  const [search, setSearch] = useState('');
+
   if (!visible) return null;
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? teams.filter((t) => {
+        const ownerName  = typeof t.createdBy === 'object' ? (t.createdBy?.name  || '') : '';
+        const ownerEmail = typeof t.createdBy === 'object' ? (t.createdBy?.email || '') : '';
+        const ownerPhone = typeof t.createdBy === 'object' ? (t.createdBy?.phone || '') : '';
+        return (
+          (t.name || '').toLowerCase().includes(q)
+          || ownerName.toLowerCase().includes(q)
+          || ownerEmail.toLowerCase().includes(q)
+          || ownerPhone.toLowerCase().includes(q)
+        );
+      })
+    : teams;
+
   return (
     <View className="absolute inset-0 bg-black/50 z-50 justify-end">
-      <View className="bg-white rounded-t-3xl p-5 max-h-96">
-        <View className="flex-row items-center justify-between mb-4">
+      <View className="bg-white rounded-t-3xl p-5" style={{ maxHeight: '72%' }}>
+        <View className="flex-row items-center justify-between mb-3">
           <Text className="text-lg font-bold text-gray-800">Select Team</Text>
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity onPress={() => { setSearch(''); onClose(); }}>
             <Ionicons name="close" size={24} color="#6B7280" />
           </TouchableOpacity>
         </View>
-        <ScrollView>
-          {teams.map((team) => (
-            <TouchableOpacity
-              key={team._id}
-              className="flex-row items-center py-3 border-b border-gray-100"
-              onPress={() => onAdd(team._id)}
-            >
-              <View className="w-10 h-10 rounded-full items-center justify-center mr-3" style={{ backgroundColor: (team.color || '#1E3A5F') + '20' }}>
-                <Text className="font-bold text-xs" style={{ color: team.color || '#1E3A5F' }}>{team.shortName}</Text>
-              </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-gray-800">{team.name}</Text>
-                <Text className="text-xs text-gray-400">{team.players?.length || 0} players</Text>
-              </View>
-              <Ionicons name="add-circle" size={22} color="#1E3A5F" />
+
+        {/* Search field */}
+        <View className="flex-row items-center bg-gray-100 rounded-xl px-3 py-2.5 mb-3 gap-2">
+          <Ionicons name="search" size={16} color="#9CA3AF" />
+          <TextInput
+            style={{ flex: 1, fontSize: 14, color: '#111827' }}
+            placeholder="Search by name, owner, email or phone..."
+            placeholderTextColor="#9CA3AF"
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={16} color="#9CA3AF" />
             </TouchableOpacity>
-          ))}
-          {teams.length === 0 && (
-            <View className="items-center py-8">
-              <Text className="text-gray-400">No teams available. Create a team first.</Text>
-              <TouchableOpacity className="mt-3" onPress={() => { onClose(); router.push('/team/create'); }}>
-                <Text className="text-primary font-bold">Create Team →</Text>
+          )}
+        </View>
+
+        <ScrollView keyboardShouldPersistTaps="handled">
+          {filtered.map((team) => {
+            const ownerName = typeof team.createdBy === 'object' ? team.createdBy?.name : '';
+            return (
+              <TouchableOpacity
+                key={team._id}
+                className="flex-row items-center py-3 border-b border-gray-100"
+                onPress={() => { setSearch(''); onAdd(team._id); }}
+              >
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                  style={{ backgroundColor: (team.color || '#1E3A5F') + '20' }}
+                >
+                  <Text className="font-bold text-xs" style={{ color: team.color || '#1E3A5F' }}>
+                    {team.shortName}
+                  </Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="font-semibold text-gray-800">{team.name}</Text>
+                  <Text className="text-xs text-gray-400">
+                    {ownerName ? `${ownerName} · ` : ''}{team.players?.length || 0} players
+                  </Text>
+                </View>
+                <Ionicons name="add-circle" size={22} color="#1E3A5F" />
               </TouchableOpacity>
+            );
+          })}
+
+          {filtered.length === 0 && (
+            <View className="items-center py-8">
+              {q ? (
+                <>
+                  <Text className="text-3xl mb-2">🔍</Text>
+                  <Text className="text-gray-400">No teams match "{search}"</Text>
+                </>
+              ) : (
+                <>
+                  <Text className="text-gray-400">No teams available. Create a team first.</Text>
+                  <TouchableOpacity className="mt-3" onPress={() => { setSearch(''); onClose(); router.push('/team/create' as any); }}>
+                    <Text className="text-primary font-bold">Create Team →</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           )}
         </ScrollView>

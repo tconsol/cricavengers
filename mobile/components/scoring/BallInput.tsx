@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 interface Props {
   onBallPress: (runs: number) => void;
   onWicket: () => void;
+  onExtra: (type: string) => void;
   isSubmitting: boolean;
 }
 
@@ -15,11 +16,18 @@ const RUN_CONFIGS = [
   { runs: 6, label: '6',  bg: 'bg-accent',   text: 'text-white',    border: 'border-2 border-yellow-500' },
 ];
 
-export default function BallInput({ onBallPress, onWicket, isSubmitting }: Props) {
+const EXTRA_CONFIGS = [
+  { key: 'wide',    label: 'Wd',  bg: '#FEFCE8', text: '#B45309', border: '#FCD34D' },
+  { key: 'no_ball', label: 'NB',  bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' },
+  { key: 'bye',     label: 'Bye', bg: '#F5F3FF', text: '#6D28D9', border: '#C4B5FD' },
+  { key: 'leg_bye', label: 'LB',  bg: '#EFF6FF', text: '#1D4ED8', border: '#93C5FD' },
+];
+
+export default function BallInput({ onBallPress, onWicket, onExtra, isSubmitting }: Props) {
   return (
-    <View className="gap-3">
+    <View style={{ gap: 10 }}>
       {/* Runs grid */}
-      <View className="flex-row gap-3">
+      <View className="flex-row gap-2">
         {RUN_CONFIGS.map((config) => (
           <TouchableOpacity
             key={config.runs}
@@ -34,7 +42,7 @@ export default function BallInput({ onBallPress, onWicket, isSubmitting }: Props
       </View>
 
       {/* Run 5 (rare) and Wicket */}
-      <View className="flex-row gap-3">
+      <View className="flex-row gap-2">
         <TouchableOpacity
           className={`flex-1 py-4 rounded-2xl bg-orange-50 border border-orange-200 items-center ${isSubmitting ? 'opacity-50' : ''}`}
           onPress={() => !isSubmitting && onBallPress(5)}
@@ -59,6 +67,27 @@ export default function BallInput({ onBallPress, onWicket, isSubmitting }: Props
             </>
           )}
         </TouchableOpacity>
+      </View>
+
+      {/* Extras row */}
+      <View className="flex-row gap-2">
+        {EXTRA_CONFIGS.map((e) => (
+          <TouchableOpacity
+            key={e.key}
+            style={{
+              flex: 1, paddingVertical: 10, borderRadius: 14,
+              backgroundColor: e.bg,
+              borderWidth: 1.5, borderColor: e.border,
+              alignItems: 'center',
+              opacity: isSubmitting ? 0.5 : 1,
+            }}
+            onPress={() => !isSubmitting && onExtra(e.key)}
+            disabled={isSubmitting}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontWeight: '800', fontSize: 13, color: e.text }}>{e.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );

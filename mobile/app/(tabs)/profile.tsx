@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@store/authStore';
 import { api } from '@services/api';
+import DrawerMenu from '@components/ui/DrawerMenu';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [stats, setStats]   = useState<any>(null);
 
   useEffect(() => {
@@ -20,7 +23,12 @@ export default function ProfileScreen() {
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
+      {
+        text: 'Sign Out', style: 'destructive', onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
     ]);
   };
 
@@ -33,6 +41,18 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
+      <DrawerMenu isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      {/* Hamburger */}
+      <View style={{ position: 'absolute', top: 52, left: 16, zIndex: 10 }}>
+        <TouchableOpacity
+          onPress={() => setDrawerOpen(true)}
+          style={{ width: 36, height: 36, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)' }}
+        >
+          <Ionicons name="menu" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
       {/* Header */}
       <View className="items-center px-4 py-8">
         <View className="w-20 h-20 bg-accent rounded-full items-center justify-center mb-3">

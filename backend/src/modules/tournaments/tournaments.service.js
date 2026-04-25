@@ -3,6 +3,7 @@ const Team = require('../../models/Team');
 const Match = require('../../models/Match');
 const ScoreSummary = require('../../models/ScoreSummary');
 const { AppError } = require('../../middlewares/errorHandler');
+const { emitToAll } = require('../../sockets');
 
 // ──────────────────────────────────────────────────────────
 // NRR helper
@@ -17,6 +18,7 @@ function calcNRR(runsScored, oversFaced, runsConceded, oversBowled) {
 // ──────────────────────────────────────────────────────────
 const createTournament = async (data, userId) => {
   const tournament = await Tournament.create({ ...data, createdBy: userId });
+  emitToAll('TOURNAMENT_CREATED', { tournament });
   return tournament;
 };
 
@@ -64,6 +66,7 @@ const updateTournament = async (id, data, userId) => {
     'maxTeams', 'prizePool', 'rules', 'matchFormat', 'totalOvers', 'state'];
   allowed.forEach((k) => { if (data[k] !== undefined) t[k] = data[k]; });
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -72,6 +75,7 @@ const deleteTournament = async (id, userId) => {
   if (!t) throw new AppError('Tournament not found', 404, 'NOT_FOUND');
   if (t.createdBy.toString() !== userId) throw new AppError('Not authorized', 403, 'FORBIDDEN');
   await t.deleteOne();
+  emitToAll('TOURNAMENT_DELETED', { tournamentId: id });
 };
 
 // ──────────────────────────────────────────────────────────
@@ -101,6 +105,7 @@ const registerTeam = async (tournamentId, teamId, userId) => {
     // Add to standings
     t.standings.push({ teamId, teamName: team.name });
     await t.save();
+    emitToAll('TOURNAMENT_UPDATED', { tournament: t });
     return t;
   }
 
@@ -112,6 +117,7 @@ const registerTeam = async (tournamentId, teamId, userId) => {
 
   t.teamRequests.push({ teamId, teamName: team.name, requestedBy: userId });
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -130,6 +136,7 @@ const approveTeamRequest = async (tournamentId, requestId, userId) => {
   t.teams.push(req.teamId);
   t.standings.push({ teamId: req.teamId, teamName: req.teamName });
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -144,6 +151,7 @@ const rejectTeamRequest = async (tournamentId, requestId, userId) => {
 
   req.status = 'rejected';
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -155,6 +163,7 @@ const removeTeam = async (tournamentId, teamId, userId) => {
   t.teams = t.teams.filter((tid) => tid.toString() !== teamId);
   t.standings = t.standings.filter((s) => s.teamId.toString() !== teamId);
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -260,6 +269,7 @@ const generateFixtures = async (tournamentId, userId) => {
   t.fixtures = createdFixtures;
   if (t.state === 'registration_closed') t.state = 'in_progress';
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -279,6 +289,7 @@ const deleteFixtures = async (tournamentId, userId) => {
 
   t.fixtures = t.fixtures.filter((f) => f.status !== 'scheduled');
   await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
   return t;
 };
 
@@ -338,6 +349,7 @@ const recalcStandings = async (tournamentId) => {
   // Sort: points desc → nrr desc
   t.standings.sort((a, b) => b.points - a.points || b.nrr - a.nrr);
   await t.save();
+  emitToAll('TOURNAMENT_STANDINGS_UPDATED', { tournamentId, standings: t.standings });
   return t.standings;
 };
 

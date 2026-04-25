@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView, Alert, TextInput as RNTextInput,
+  KeyboardAvoidingView, Platform, ScrollView, Alert,
+  StatusBar, TextInput as RNTextInput,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@store/authStore';
 
 export default function RegisterScreen() {
@@ -14,6 +16,8 @@ export default function RegisterScreen() {
   const [confirm,  setConfirm]  = useState('');
   const [loading,  setLoading]  = useState(false);
   const [errors,   setErrors]   = useState<Record<string, string>>({});
+  const [showPass,    setShowPass]    = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const emailRef    = useRef<RNTextInput>(null);
   const passwordRef = useRef<RNTextInput>(null);
@@ -42,118 +46,177 @@ export default function RegisterScreen() {
     }
   };
 
-  const fieldStyle = (field: string) =>
-    `border rounded-xl px-4 py-3 text-base text-gray-900 ${
-      errors[field] ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-gray-50'
-    }`;
+  const inputContainer = (field: string) => ({
+    borderRadius: 14, borderWidth: 1.5,
+    borderColor: errors[field] ? '#FCA5A5' : 'rgba(255,255,255,0.15)',
+    backgroundColor: errors[field] ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.07)',
+    paddingHorizontal: 16, flexDirection: 'row' as const, alignItems: 'center' as const,
+  });
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: '#0F2444' }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
+      <StatusBar barStyle="light-content" backgroundColor="#0F2444" />
       <ScrollView
-        style={{ flex: 1, backgroundColor: '#1E3A5F' }}
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ alignItems: 'center', paddingTop: 64, paddingBottom: 32, paddingHorizontal: 24 }}>
-          <Text style={{ fontSize: 30, fontWeight: 'bold', color: '#fff' }}>Create Account</Text>
-          <Text style={{ color: '#bfdbfe', marginTop: 4 }}>Start scoring matches today</Text>
+        {/* Hero */}
+        <View style={{ alignItems: 'center', paddingTop: 64, paddingBottom: 36, paddingHorizontal: 24 }}>
+          <View style={{
+            width: 72, height: 72, borderRadius: 36,
+            backgroundColor: 'rgba(245,158,11,0.15)',
+            borderWidth: 1.5, borderColor: 'rgba(245,158,11,0.3)',
+            alignItems: 'center', justifyContent: 'center',
+            marginBottom: 16,
+          }}>
+            <Text style={{ fontSize: 36 }}>🏏</Text>
+          </View>
+          <Text style={{ fontSize: 28, fontWeight: '900', color: '#fff' }}>Create Account</Text>
+          <Text style={{ color: '#93C5FD', marginTop: 4, fontSize: 14 }}>
+            Start scoring matches today
+          </Text>
         </View>
 
-        <View style={{ marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 24, paddingVertical: 32 }}>
+        {/* Form */}
+        <View style={{ paddingHorizontal: 24 }}>
+
           {/* Full Name */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Full Name</Text>
-            <TextInput
-              className={fieldStyle('name')}
-              placeholder="Virat Kohli"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              returnKeyType="next"
-              onSubmitEditing={() => emailRef.current?.focus()}
-              blurOnSubmit={false}
-            />
-            {errors.name ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.name}</Text> : null}
+          <View style={{ marginBottom: 14 }}>
+            <Text style={{ color: '#93C5FD', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 }}>
+              FULL NAME
+            </Text>
+            <View style={inputContainer('name')}>
+              <Ionicons name="person-outline" size={18} color={errors.name ? '#FCA5A5' : '#93C5FD'} style={{ marginRight: 10 }} />
+              <TextInput
+                style={{ flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 }}
+                placeholder="Virat Kohli"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                returnKeyType="next"
+                onSubmitEditing={() => emailRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
+            {errors.name ? <Text style={{ color: '#FCA5A5', fontSize: 12, marginTop: 4 }}>{errors.name}</Text> : null}
           </View>
 
           {/* Email */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Email</Text>
-            <TextInput
-              ref={emailRef}
-              className={fieldStyle('email')}
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              returnKeyType="next"
-              onSubmitEditing={() => passwordRef.current?.focus()}
-              blurOnSubmit={false}
-            />
-            {errors.email ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.email}</Text> : null}
+          <View style={{ marginBottom: 14 }}>
+            <Text style={{ color: '#93C5FD', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 }}>
+              EMAIL ADDRESS
+            </Text>
+            <View style={inputContainer('email')}>
+              <Ionicons name="mail-outline" size={18} color={errors.email ? '#FCA5A5' : '#93C5FD'} style={{ marginRight: 10 }} />
+              <TextInput
+                ref={emailRef}
+                style={{ flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 }}
+                placeholder="you@example.com"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
+            {errors.email ? <Text style={{ color: '#FCA5A5', fontSize: 12, marginTop: 4 }}>{errors.email}</Text> : null}
           </View>
 
           {/* Password */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Password</Text>
-            <TextInput
-              ref={passwordRef}
-              className={fieldStyle('password')}
-              placeholder="••••••••"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              returnKeyType="next"
-              onSubmitEditing={() => confirmRef.current?.focus()}
-              blurOnSubmit={false}
-            />
-            {errors.password ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.password}</Text> : null}
+          <View style={{ marginBottom: 14 }}>
+            <Text style={{ color: '#93C5FD', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 }}>
+              PASSWORD
+            </Text>
+            <View style={inputContainer('password')}>
+              <Ionicons name="lock-closed-outline" size={18} color={errors.password ? '#FCA5A5' : '#93C5FD'} style={{ marginRight: 10 }} />
+              <TextInput
+                ref={passwordRef}
+                style={{ flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 }}
+                placeholder="••••••••"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPass}
+                returnKeyType="next"
+                onSubmitEditing={() => confirmRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+              <TouchableOpacity onPress={() => setShowPass((v) => !v)} style={{ paddingLeft: 8, paddingVertical: 14 }}>
+                <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={20} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
+            </View>
+            {errors.password ? <Text style={{ color: '#FCA5A5', fontSize: 12, marginTop: 4 }}>{errors.password}</Text> : null}
           </View>
 
           {/* Confirm Password */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563', marginBottom: 4 }}>Confirm Password</Text>
-            <TextInput
-              ref={confirmRef}
-              className={fieldStyle('confirm')}
-              placeholder="••••••••"
-              value={confirm}
-              onChangeText={setConfirm}
-              secureTextEntry
-              returnKeyType="done"
-              onSubmitEditing={handleRegister}
-            />
-            {errors.confirm ? <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 2 }}>{errors.confirm}</Text> : null}
+          <View style={{ marginBottom: 28 }}>
+            <Text style={{ color: '#93C5FD', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 }}>
+              CONFIRM PASSWORD
+            </Text>
+            <View style={inputContainer('confirm')}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={errors.confirm ? '#FCA5A5' : '#93C5FD'} style={{ marginRight: 10 }} />
+              <TextInput
+                ref={confirmRef}
+                style={{ flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 }}
+                placeholder="••••••••"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                value={confirm}
+                onChangeText={setConfirm}
+                secureTextEntry={!showConfirm}
+                returnKeyType="done"
+                onSubmitEditing={handleRegister}
+              />
+              <TouchableOpacity onPress={() => setShowConfirm((v) => !v)} style={{ paddingLeft: 8, paddingVertical: 14 }}>
+                <Ionicons name={showConfirm ? 'eye-off-outline' : 'eye-outline'} size={20} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
+            </View>
+            {errors.confirm ? <Text style={{ color: '#FCA5A5', fontSize: 12, marginTop: 4 }}>{errors.confirm}</Text> : null}
           </View>
 
+          {/* Create Account Button */}
           <TouchableOpacity
             style={{
-              borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8,
-              backgroundColor: loading ? '#6B7280' : '#1E3A5F',
+              borderRadius: 16, paddingVertical: 16,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: loading ? 'rgba(245,158,11,0.5)' : '#F59E0B',
+              flexDirection: 'row', gap: 8,
             }}
             onPress={handleRegister}
             disabled={loading}
             activeOpacity={0.85}
           >
-            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 17 }}>
-              {loading ? 'Creating account...' : 'Create Account'}
-            </Text>
+            {loading ? (
+              <Text style={{ color: '#000', fontWeight: '800', fontSize: 16 }}>Creating account...</Text>
+            ) : (
+              <>
+                <Text style={{ color: '#000', fontWeight: '800', fontSize: 16 }}>Create Account</Text>
+                <Ionicons name="arrow-forward" size={18} color="#000" />
+              </>
+            )}
           </TouchableOpacity>
 
+          {/* Sign in link */}
           <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 24 }}>
-            <Text style={{ color: '#6B7280' }}>Already have an account? </Text>
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>
+              Already have an account?{' '}
+            </Text>
             <TouchableOpacity onPress={() => router.back()}>
-              <Text style={{ color: '#1E3A5F', fontWeight: 'bold' }}>Sign in</Text>
+              <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 14 }}>Sign in</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <View style={{ height: 40 }} />
+
+        <View style={{ height: 48 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

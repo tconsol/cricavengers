@@ -157,7 +157,10 @@ export const useScoringStore = create<ScoringState>((set, get) => ({
       set({ summary: data.summary, liveState: data.summary?.currentState || null });
     }
     if (data.ball) {
-      set((s) => ({ recentBalls: [data.ball, ...s.recentBalls].slice(0, 12) }));
+      set((s) => {
+        if (s.recentBalls.some((b) => b._id && b._id === data.ball._id)) return {};
+        return { recentBalls: [data.ball, ...s.recentBalls].slice(0, 12) };
+      });
     }
   },
 

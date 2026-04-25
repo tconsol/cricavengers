@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@services/api';
+import { onEvent } from '@services/socket';
 
 interface Team {
   _id: string;
@@ -23,6 +24,7 @@ interface TeamState {
   createTeam: (data: Record<string, unknown>) => Promise<Team>;
   addPlayer: (teamId: string, player: Record<string, unknown>) => Promise<void>;
   removePlayer: (teamId: string, playerId: string) => Promise<void>;
+  initSocketListeners: () => () => void;
 }
 
 export const useTeamStore = create<TeamState>((set) => ({
@@ -68,5 +70,32 @@ export const useTeamStore = create<TeamState>((set) => ({
   removePlayer: async (teamId, playerId) => {
     const res = await api.delete(`/teams/${teamId}/players/${playerId}`) as any;
     set({ currentTeam: res.data.team });
+  },
+
+  initSocketListeners: () => {
+    const unsubCreated = onEvent('TEAM_CREATED', (data: any) => {
+      const team: Team = data.team;
+      set((s) => {
+        const exists = s.teams.some((t) => t._id === team._id);
+        return exists ? {} : { teams: [team, ...s.teams] };
+      });
+    });
+
+    const unsubUpdated = onEvent('TEAM_UPDATED', (data: any) => {
+      const updated: Team = data.team;
+      set((s) => ({
+        teams: s.teams.map((t) => t._id === updated._id ? { ...t, ...updated } : t),
+        currentTeam: s.currentTeam?._id === updated._id ? { ...s.currentTeam, ...updated } : s.currentTeam,
+      }));
+    });
+
+    const unsubDeleted = onEvent('TEAM_DELETED', (data: any) => {
+      set((s) => ({
+        teams: s.teams.filter((t) => t._id !== data.teamId),
+        currentTeam: s.currentTeam?._id === data.teamId ? null : s.currentTeam,
+      }));
+    });
+
+    return () => { unsubCreated(); unsubUpdated(); unsubDeleted(); };
   },
 }));

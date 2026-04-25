@@ -5,11 +5,17 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
+import { useMatchStore } from '@store/matchStore';
+import { useTeamStore } from '@store/teamStore';
+import { useTournamentStore } from '@store/tournamentStore';
 import { startSyncListener } from '@services/offlineSync';
 import { connectSocket } from '@services/socket';
 
 export default function RootLayout() {
   const { restoreSession, isAuthenticated } = useAuthStore();
+  const initMatchListeners = useMatchStore((s) => s.initSocketListeners);
+  const initTeamListeners = useTeamStore((s) => s.initSocketListeners);
+  const initTournamentListeners = useTournamentStore((s) => s.initSocketListeners);
 
   useEffect(() => {
     restoreSession();
@@ -18,7 +24,16 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) connectSocket();
+    if (!isAuthenticated) return;
+    connectSocket();
+    // Small delay to let socket connect before attaching listeners
+    const t = setTimeout(() => {
+      const u1 = initMatchListeners();
+      const u2 = initTeamListeners();
+      const u3 = initTournamentListeners();
+      return () => { u1(); u2(); u3(); };
+    }, 500);
+    return () => clearTimeout(t);
   }, [isAuthenticated]);
 
   return (

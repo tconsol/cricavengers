@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
   team: any;
@@ -6,33 +7,60 @@ interface Props {
 }
 
 export default function TeamCard({ team, onPress }: Props) {
+  const captain = team.players?.find((p: any) => p.isCaptain);
+  const wins = team.stats?.wins ?? 0;
+  const losses = team.stats?.losses ?? 0;
+  const matches = team.stats?.matches ?? 0;
+
   return (
     <TouchableOpacity
-      className="flex-1 bg-white rounded-2xl p-4 shadow-sm active:opacity-90"
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
+      style={{
+        backgroundColor: '#fff', borderRadius: 16,
+        padding: 14, marginBottom: 10,
+        shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 1,
+        flexDirection: 'row', alignItems: 'center',
+      }}
     >
-      {/* Team logo/color */}
-      <View
-        className="w-14 h-14 rounded-full items-center justify-center mb-3"
-        style={{ backgroundColor: team.color || '#1E3A5F' }}
-      >
-        <Text className="text-white text-xl font-black">
-          {team.shortName || team.name.slice(0, 2).toUpperCase()}
+      <View style={{
+        width: 48, height: 48, borderRadius: 24,
+        backgroundColor: (team.color || '#1E3A5F') + '20',
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 2, borderColor: team.color || '#1E3A5F',
+        marginRight: 12,
+      }}>
+        <Text style={{ fontWeight: '900', fontSize: 13, color: team.color || '#1E3A5F' }}>
+          {team.shortName || team.name?.slice(0, 2).toUpperCase()}
         </Text>
       </View>
 
-      <Text className="font-bold text-gray-800" numberOfLines={2}>{team.name}</Text>
-      <Text className="text-xs text-gray-400 mt-1">{team.playerCount ?? team.players?.length ?? 0} players</Text>
-
-      {/* Win/Loss */}
-      {(team.stats?.matches ?? 0) > 0 && (
-        <View className="flex-row gap-2 mt-2">
-          <Text className="text-xs text-green-600 font-semibold">W {team.stats?.wins ?? 0}</Text>
-          <Text className="text-xs text-gray-300">|</Text>
-          <Text className="text-xs text-red-500 font-semibold">L {team.stats?.losses ?? 0}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontWeight: '700', fontSize: 15, color: '#111827' }} numberOfLines={1}>
+          {team.name}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name="people-outline" size={11} color="#9CA3AF" />
+            <Text style={{ fontSize: 11, color: '#6B7280' }}>
+              {team.playerCount ?? team.players?.length ?? 0}
+            </Text>
+          </View>
+          {matches > 0 && (
+            <>
+              <Text style={{ color: '#16A34A', fontSize: 11, fontWeight: '600' }}>W{wins}</Text>
+              <Text style={{ color: '#DC2626', fontSize: 11, fontWeight: '600' }}>L{losses}</Text>
+            </>
+          )}
         </View>
-      )}
+        {captain && (
+          <Text style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }} numberOfLines={1}>
+            C: {captain.name}
+          </Text>
+        )}
+      </View>
+
+      <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
     </TouchableOpacity>
   );
 }

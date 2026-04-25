@@ -46,7 +46,7 @@ const teamSchema = new mongoose.Schema({
 teamSchema.index({ createdBy: 1 });
 teamSchema.index({ name: 'text' });
 teamSchema.virtual('playerCount').get(function () {
-  return this.players.length;
+  return this.players?.length ?? 0;
 });
 
 module.exports = mongoose.model('Team', teamSchema);

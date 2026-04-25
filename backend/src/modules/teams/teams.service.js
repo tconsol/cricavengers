@@ -1,9 +1,11 @@
 const Team = require('../../models/Team');
 const User = require('../../models/User');
 const { AppError } = require('../../middlewares/errorHandler');
+const { emitToAll } = require('../../sockets');
 
 const createTeam = async (data, createdBy) => {
   const team = await Team.create({ ...data, createdBy });
+  emitToAll('TEAM_CREATED', { team });
   return team;
 };
 
@@ -36,6 +38,7 @@ const updateTeam = async (id, data, userId) => {
 
   Object.assign(team, data);
   await team.save();
+  emitToAll('TEAM_UPDATED', { team });
   return team;
 };
 
@@ -49,6 +52,7 @@ const addPlayer = async (teamId, playerData, userId) => {
 
   team.players.push(playerData);
   await team.save();
+  emitToAll('TEAM_UPDATED', { team });
   return team;
 };
 
@@ -59,6 +63,7 @@ const removePlayer = async (teamId, playerId, userId) => {
 
   team.players = team.players.filter((p) => p._id.toString() !== playerId);
   await team.save();
+  emitToAll('TEAM_UPDATED', { team });
   return team;
 };
 
@@ -68,6 +73,7 @@ const deleteTeam = async (id, userId) => {
   if (team.createdBy.toString() !== userId) throw new AppError('Not authorized', 403, 'FORBIDDEN');
   team.isActive = false;
   await team.save();
+  emitToAll('TEAM_DELETED', { teamId: id });
 };
 
 const searchPlayers = async (query) => {

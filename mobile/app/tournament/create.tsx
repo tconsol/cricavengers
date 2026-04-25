@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, Alert, ActivityIndicator, Switch,
+  ScrollView, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTournamentStore } from '@store/tournamentStore';
+import DatePickerField from '@components/ui/DatePickerField';
 
 const FORMATS = [
   { key: 'round_robin',        label: 'Round Robin',          icon: '🔄', desc: 'Every team plays each other' },
@@ -17,7 +18,7 @@ const FORMATS = [
 ];
 
 const MATCH_FORMATS = ['T20', 'ODI', 'T10', 'Custom'];
-const OVERS_MAP: Record<string, string> = { T20: '20', ODI: '50', T10: '10', Custom: '10' };
+const OVERS_MAP: Record<string, string> = { T20: '20', ODI: '50', T10: '10', Custom: '' };
 const TEAM_COUNTS = [4, 6, 8, 10, 12, 16];
 
 export default function CreateTournamentScreen() {
@@ -62,8 +63,8 @@ export default function CreateTournamentScreen() {
         prizePool: form.prizePool.trim(),
         isPublic: form.isPublic,
       };
-      if (form.startDate) payload.startDate = new Date(form.startDate).toISOString();
-      if (form.endDate)   payload.endDate   = new Date(form.endDate).toISOString();
+      if (form.startDate) payload.startDate = new Date(form.startDate + 'T00:00:00').toISOString();
+      if (form.endDate)   payload.endDate   = new Date(form.endDate   + 'T00:00:00').toISOString();
 
       const t = await createTournament(payload);
       Alert.alert('Tournament Created!', `${t.name} is ready. Add teams to get started.`, [
@@ -89,6 +90,11 @@ export default function CreateTournamentScreen() {
         <Text className="text-white text-xl font-bold ml-3">Create Tournament</Text>
       </View>
 
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
       <ScrollView className="flex-1 bg-surface rounded-t-3xl" keyboardShouldPersistTaps="handled">
         <View className="px-4 pt-5 pb-10">
 
@@ -161,14 +167,32 @@ export default function CreateTournamentScreen() {
             ))}
           </View>
           <View className="mb-1">
-            <Text className="text-sm text-gray-500 mb-1">Overs per match</Text>
+            <Text className="text-sm text-gray-500 mb-1">
+              Overs per match{form.matchFormat === 'Custom' ? ' *' : ''}
+            </Text>
             <TextInput
-              className="border border-gray-200 bg-white rounded-xl px-4 py-3 text-base"
-              placeholder="20"
+              style={{
+                borderWidth: 1.5,
+                borderColor: form.matchFormat === 'Custom' ? '#F59E0B' : '#E5E7EB',
+                backgroundColor: form.matchFormat === 'Custom' ? '#FFFBEB' : '#fff',
+                borderRadius: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: '#111827',
+              }}
+              placeholder={form.matchFormat === 'Custom' ? 'Enter custom overs (e.g. 15)' : String(OVERS_MAP[form.matchFormat] || '20')}
+              placeholderTextColor={form.matchFormat === 'Custom' ? '#D97706' : '#9CA3AF'}
               value={form.totalOvers}
               onChangeText={(v) => set('totalOvers', v)}
               keyboardType="number-pad"
+              autoFocus={form.matchFormat === 'Custom' && !form.totalOvers}
             />
+            {form.matchFormat === 'Custom' && !form.totalOvers && (
+              <Text style={{ color: '#D97706', fontSize: 12, marginTop: 4 }}>
+                Enter the number of overs for each match
+              </Text>
+            )}
           </View>
 
           <SectionTitle title="Team Capacity" />
@@ -187,19 +211,17 @@ export default function CreateTournamentScreen() {
           </View>
 
           <SectionTitle title="Dates (optional)" />
-          <TextInput
-            className="border border-gray-200 bg-white rounded-xl px-4 py-3 text-base mb-3"
-            placeholder="Start Date (YYYY-MM-DD)"
+          <DatePickerField
+            label="Start Date"
             value={form.startDate}
-            onChangeText={(v) => set('startDate', v)}
-            keyboardType="numbers-and-punctuation"
+            onChange={(iso) => set('startDate', iso)}
           />
-          <TextInput
-            className="border border-gray-200 bg-white rounded-xl px-4 py-3 text-base mb-3"
-            placeholder="End Date (YYYY-MM-DD)"
+          <DatePickerField
+            label="End Date"
             value={form.endDate}
-            onChangeText={(v) => set('endDate', v)}
-            keyboardType="numbers-and-punctuation"
+            onChange={(iso) => set('endDate', iso)}
+            minYear={2020}
+            maxYear={2035}
           />
 
           <SectionTitle title="Visibility" />
@@ -226,6 +248,7 @@ export default function CreateTournamentScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

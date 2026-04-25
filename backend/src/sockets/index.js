@@ -34,6 +34,9 @@ const initSocket = (server) => {
   io.on('connection', (socket) => {
     logger.info(`Socket connected: ${socket.id} [user: ${socket.userId}]`);
 
+    // All authenticated users join the global broadcast room
+    socket.join('global');
+
     // Join a match room to receive live updates
     socket.on('JOIN_MATCH', async (matchId) => {
       if (!matchId) return;
@@ -73,6 +76,11 @@ const emitMatchUpdate = (matchId, event, data) => {
   if (_emitMatchUpdate) _emitMatchUpdate(matchId, event, data);
 };
 
+const emitToAll = (event, data) => {
+  if (!io) return;
+  io.to('global').emit(event, { ...data, timestamp: new Date().toISOString() });
+};
+
 const getIO = () => io;
 
-module.exports = { initSocket, emitMatchUpdate, getIO };
+module.exports = { initSocket, emitMatchUpdate, emitToAll, getIO };

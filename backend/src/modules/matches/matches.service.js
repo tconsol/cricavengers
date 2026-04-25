@@ -2,6 +2,7 @@ const Match = require('../../models/Match');
 const ScoreSummary = require('../../models/ScoreSummary');
 const AuditLog = require('../../models/AuditLog');
 const { AppError } = require('../../middlewares/errorHandler');
+const { emitToAll, emitMatchUpdate } = require('../../sockets');
 
 const createMatch = async (data, createdBy) => {
   if (data.teamA === data.teamB) {
@@ -22,6 +23,7 @@ const createMatch = async (data, createdBy) => {
     after: match.toObject(),
   });
 
+  emitToAll('MATCH_CREATED', { match });
   return match;
 };
 
@@ -29,7 +31,10 @@ const getMatches = async (query, userId) => {
   const { page = 1, limit = 20, state, mine, teamId } = query;
   const filter = {};
 
-  if (state) filter.state = state;
+  if (state) {
+    const states = state.split(',').map((s) => s.trim()).filter(Boolean);
+    filter.state = states.length > 1 ? { $in: states } : states[0];
+  }
   if (mine === 'true') filter.createdBy = userId;
   if (teamId) filter.$or = [{ teamA: teamId }, { teamB: teamId }];
 
@@ -105,6 +110,7 @@ const setToss = async (matchId, { winner, decision }, userId) => {
     after: { winner, decision, battingTeam, bowlingTeam },
   });
 
+  emitMatchUpdate(matchId, 'MATCH_STATE_CHANGED', { state: match.state, match });
   return match;
 };
 
@@ -141,6 +147,8 @@ const startInnings = async (matchId, { innings, striker, nonStriker, bowler }, u
 
   match.transitionTo(innings === 1 ? 'FIRST_INNINGS' : 'SECOND_INNINGS');
   await match.save();
+
+  emitMatchUpdate(matchId, 'MATCH_STATE_CHANGED', { state: match.state, match });
 
   // Update score summary
   await ScoreSummary.findOneAndUpdate(
@@ -196,6 +204,10 @@ const endInnings = async (matchId, userId) => {
     entityType: 'Match',
   });
 
+  emitMatchUpdate(matchId, 'MATCH_STATE_CHANGED', { state: match.state, match });
+  if (match.state === 'COMPLETED') {
+    emitToAll('MATCH_COMPLETED', { matchId, result: match.result });
+  }
   return match;
 };
 
@@ -252,6 +264,8 @@ const abandonMatch = async (matchId, userId) => {
   await match.save();
 
   await AuditLog.create({ matchId, userId, action: 'MATCH_STATE_CHANGED', after: { state: 'ABANDONED' } });
+  emitMatchUpdate(matchId, 'MATCH_STATE_CHANGED', { state: 'ABANDONED', match });
+  emitToAll('MATCH_COMPLETED', { matchId, result: match.result });
   return match;
 };
 

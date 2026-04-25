@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, Alert, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, Alert, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,24 +10,100 @@ import BallInput from '@components/scoring/BallInput';
 import ScoreBoard from '@components/scoring/ScoreBoard';
 import RecentBalls from '@components/scoring/RecentBalls';
 import WicketModal from '@components/scoring/WicketModal';
-import ExtrasModal from '@components/scoring/ExtrasModal';
 import NewBatsmanModal from '@components/scoring/NewBatsmanModal';
 import NewBowlerModal from '@components/scoring/NewBowlerModal';
 
+// ── Extra runs picker shown inline when an extra type is tapped ──
+const EXTRA_META: Record<string, { title: string; subtitle: string; color: string }> = {
+  wide:    { title: 'Wide',     subtitle: 'Runs from the wide? (1 penalty auto-added)', color: '#B45309' },
+  no_ball: { title: 'No Ball',  subtitle: 'Runs scored off the bat?',                  color: '#C2410C' },
+  bye:     { title: 'Bye',      subtitle: 'Bye runs (credited to extras)',              color: '#6D28D9' },
+  leg_bye: { title: 'Leg Bye',  subtitle: 'Leg bye runs (credited to extras)',          color: '#1D4ED8' },
+};
+
+function ExtraRunsPicker({
+  type, onConfirm, onCancel,
+}: {
+  type: string;
+  onConfirm: (runs: number) => void;
+  onCancel: () => void;
+}) {
+  const meta = EXTRA_META[type] || { title: type, subtitle: 'Runs?', color: '#374151' };
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <View>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: meta.color }}>{meta.title}</Text>
+          <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{meta.subtitle}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={onCancel}
+          style={{ backgroundColor: '#F3F4F6', borderRadius: 20, padding: 8 }}
+        >
+          <Ionicons name="close" size={18} color="#6B7280" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Run buttons 0-6 grid */}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+        {[0, 1, 2, 3, 4, 6].map((r) => (
+          <TouchableOpacity
+            key={r}
+            onPress={() => onConfirm(r)}
+            style={{
+              flex: 1, aspectRatio: 1, borderRadius: 18,
+              backgroundColor: r === 4 ? '#DCFCE7' : r === 6 ? '#FEF9C3' : '#EFF6FF',
+              borderWidth: 2,
+              borderColor: r === 4 ? '#4ADE80' : r === 6 ? '#FCD34D' : '#BFDBFE',
+              alignItems: 'center', justifyContent: 'center',
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 24, fontWeight: '900', color: r === 4 ? '#16A34A' : r === 6 ? '#B45309' : '#1D4ED8' }}>
+              {r}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Dotted 5 */}
+      <TouchableOpacity
+        onPress={() => onConfirm(5)}
+        style={{
+          paddingVertical: 12, borderRadius: 14,
+          backgroundColor: '#FFF7ED', borderWidth: 1.5, borderColor: '#FDBA74',
+          alignItems: 'center',
+        }}
+        activeOpacity={0.7}
+      >
+        <Text style={{ fontWeight: '800', color: '#C2410C' }}>5  <Text style={{ fontWeight: '400', fontSize: 12, color: '#9CA3AF' }}>(rare)</Text></Text>
+      </TouchableOpacity>
+
+      {type === 'wide' && (
+        <Text style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginTop: 10 }}>
+          Total extras = 1 (wide penalty) + selected runs
+        </Text>
+      )}
+    </View>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
 export default function ScoringScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { currentMatch, fetchMatch } = useMatchStore();
   const { summary, addBall, undoBall, fetchSummary, fetchRecentBalls, liveState, isLoading } = useScoringStore();
 
-  const [extraType, setExtraType]         = useState<string | null>(null);
   const [showWicket, setShowWicket]       = useState(false);
-  const [showExtras, setShowExtras]       = useState(false);
   const [showNewBatter, setShowNewBatter] = useState(false);
   const [showNewBowler, setShowNewBowler] = useState(false);
-  const [pendingBall, setPendingBall]     = useState<any>(null);
   const [isSubmitting, setIsSubmitting]   = useState(false);
 
-  const innings = liveState?.innings || 1;
+  // Extra flow state
+  const [pendingExtraType, setPendingExtraType] = useState<string | null>(null);
+
+  const innings    = liveState?.innings || 1;
   const striker    = liveState?.striker;
   const nonStriker = liveState?.nonStriker;
   const bowler     = liveState?.currentBowler;
@@ -38,62 +114,141 @@ export default function ScoringScreen() {
     fetchRecentBalls(id!, innings);
   }, [id]);
 
-  const handleBallPress = useCallback(async (runs: number) => {
+  const submitBall = async (ball: any) => {
     if (!striker || !bowler) {
       Alert.alert('Setup Required', 'Please set batsmen and bowler first');
       return;
     }
-
-    const ball = {
-      innings: innings as 1 | 2,
-      batsman: striker?._id || striker,
-      bowler:  bowler?._id  || bowler,
-      runs,
-      extras: extraType ? { type: extraType, runs: extraType === 'wide' || extraType === 'no_ball' ? 1 : 0 } : null,
-      strikerAfter: runs % 2 !== 0 ? (nonStriker?._id || nonStriker) : (striker?._id || striker),
-      nonStrikerAfter: runs % 2 !== 0 ? (striker?._id || striker) : (nonStriker?._id || nonStriker),
-    };
-
-    setPendingBall(ball);
-    setExtraType(null);
-
-    await submitBall(ball);
-  }, [striker, nonStriker, bowler, innings, extraType]);
-
-  const submitBall = async (ball: any) => {
     setIsSubmitting(true);
     try {
       await addBall(id!, ball);
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await fetchRecentBalls(id!, innings);
 
-      // Check if over is complete (6 legal balls)
-      const balls = (liveState?.ball || 0);
-      if (balls === 0 && (liveState?.over || 0) > 0) {
+      // Prompt for new bowler when over is complete
+      const ballsAfter = liveState?.ball ?? 0;
+      if (ballsAfter === 0 && (liveState?.over ?? 0) > 0) {
         setShowNewBowler(true);
       }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to record ball');
     } finally {
       setIsSubmitting(false);
-      setPendingBall(null);
     }
   };
 
-  const handleWicketBall = async (runs: number, wicketData: any) => {
+  // Normal run (no extra)
+  const handleBallPress = useCallback(async (runs: number) => {
+    if (!striker || !bowler) {
+      Alert.alert('Setup Required', 'Please set batsmen and bowler first');
+      return;
+    }
+    const sId  = striker?._id  || striker;
+    const nsId = nonStriker?._id || nonStriker;
+    const bId  = bowler?._id   || bowler;
+
     const ball = {
       innings: innings as 1 | 2,
-      batsman: striker?._id || striker,
-      bowler:  bowler?._id  || bowler,
+      batsman: sId,
+      bowler:  bId,
+      runs,
+      extras: null,
+      strikerAfter:    runs % 2 !== 0 ? nsId : sId,
+      nonStrikerAfter: runs % 2 !== 0 ? sId  : nsId,
+    };
+    await submitBall(ball);
+  }, [striker, nonStriker, bowler, innings]);
+
+  // Extra type button pressed → show picker
+  const handleExtraPress = useCallback((type: string) => {
+    if (!striker || !bowler) {
+      Alert.alert('Setup Required', 'Please set batsmen and bowler first');
+      return;
+    }
+    setPendingExtraType(type);
+  }, [striker, bowler]);
+
+  // Extra runs selected from picker
+  const handleExtraRunsConfirm = useCallback(async (extraRuns: number) => {
+    const type = pendingExtraType!;
+    setPendingExtraType(null);
+
+    const sId  = striker?._id  || striker;
+    const nsId = nonStriker?._id || nonStriker;
+    const bId  = bowler?._id   || bowler;
+
+    let runs   = 0;
+    let extras: any;
+    let strikerAfter: any;
+    let nonStrikerAfter: any;
+
+    if (type === 'wide') {
+      // Wide: always 0 bat runs; penalty 1 + boundary runs go to extras
+      // Strike does NOT rotate on a wide
+      runs   = 0;
+      extras = { type: 'wide', runs: 1 + extraRuns };
+      strikerAfter    = sId;
+      nonStrikerAfter = nsId;
+    } else if (type === 'no_ball') {
+      // No Ball: off-bat runs credited to batsman; 1 penalty always to extras
+      // Strike rotates based on off-bat runs
+      runs   = extraRuns;
+      extras = { type: 'no_ball', runs: 1 };
+      strikerAfter    = extraRuns % 2 !== 0 ? nsId : sId;
+      nonStrikerAfter = extraRuns % 2 !== 0 ? sId  : nsId;
+    } else {
+      // Bye / Leg Bye: 0 bat runs; runs go to extras
+      // Strike rotates based on bye runs
+      runs   = 0;
+      extras = { type, runs: extraRuns };
+      strikerAfter    = extraRuns % 2 !== 0 ? nsId : sId;
+      nonStrikerAfter = extraRuns % 2 !== 0 ? sId  : nsId;
+    }
+
+    const ball = {
+      innings: innings as 1 | 2,
+      batsman: sId,
+      bowler:  bId,
+      runs,
+      extras,
+      strikerAfter,
+      nonStrikerAfter,
+    };
+    await submitBall(ball);
+  }, [pendingExtraType, striker, nonStriker, bowler, innings]);
+
+  // Wicket
+  const handleWicketBall = async (runs: number, wicketData: any) => {
+    if (!striker || !bowler) {
+      Alert.alert('Setup Required', 'Please set batsmen and bowler first');
+      return;
+    }
+    const sId  = striker?._id  || striker;
+    const nsId = nonStriker?._id || nonStriker;
+    const bId  = bowler?._id   || bowler;
+
+    const ball = {
+      innings: innings as 1 | 2,
+      batsman: sId,
+      bowler:  bId,
       runs,
       wicket: wicketData,
-      strikerAfter: null,
-      nonStrikerAfter: nonStriker?._id || nonStriker,
+      strikerAfter:    null,
+      nonStrikerAfter: nsId,
     };
     setShowWicket(false);
-    await submitBall(ball);
+    setIsSubmitting(true);
+    try {
+      await addBall(id!, ball);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await fetchRecentBalls(id!, innings);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to record wicket');
+      setIsSubmitting(false);
+      return;
+    }
+    setIsSubmitting(false);
     setShowNewBatter(true);
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   };
 
   const handleUndo = () => {
@@ -135,9 +290,7 @@ export default function ScoringScreen() {
       </View>
 
       {/* ScoreBoard */}
-      {summary && (
-        <ScoreBoard match={currentMatch} summary={summary} compact />
-      )}
+      {summary && <ScoreBoard match={currentMatch} summary={summary} compact />}
 
       {/* Players on pitch */}
       <View className="flex-row px-4 py-2 gap-2">
@@ -175,37 +328,22 @@ export default function ScoringScreen() {
 
       {/* Main Scoring Pad */}
       <View className="flex-1 bg-surface rounded-t-3xl px-4 pt-4">
-        {/* Extra type selector */}
-        <View className="flex-row gap-2 mb-3">
-          {[
-            { key: null,      label: 'Normal' },
-            { key: 'wide',    label: 'Wide' },
-            { key: 'no_ball', label: 'No Ball' },
-            { key: 'bye',     label: 'Bye' },
-            { key: 'leg_bye', label: 'Leg Bye' },
-          ].map((e) => (
-            <TouchableOpacity
-              key={String(e.key)}
-              className={`flex-1 py-2 rounded-xl items-center ${
-                extraType === e.key ? 'bg-accent' : 'bg-gray-100'
-              }`}
-              onPress={() => setExtraType(extraType === e.key ? null : e.key)}
-            >
-              <Text className={`text-xs font-bold ${extraType === e.key ? 'text-white' : 'text-gray-600'}`}>
-                {e.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {pendingExtraType ? (
+          <ExtraRunsPicker
+            type={pendingExtraType}
+            onConfirm={handleExtraRunsConfirm}
+            onCancel={() => setPendingExtraType(null)}
+          />
+        ) : (
+          <BallInput
+            onBallPress={handleBallPress}
+            onWicket={() => setShowWicket(true)}
+            onExtra={handleExtraPress}
+            isSubmitting={isSubmitting}
+          />
+        )}
 
-        {/* Ball Input Grid */}
-        <BallInput
-          onBallPress={handleBallPress}
-          onWicket={() => setShowWicket(true)}
-          isSubmitting={isSubmitting}
-        />
-
-        {/* Recent Balls */}
+        {/* Recent Balls always visible */}
         <RecentBalls matchId={id!} compact />
       </View>
 

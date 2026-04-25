@@ -100,11 +100,11 @@ tournamentSchema.index({ state: 1 });
 tournamentSchema.index({ name: 'text' });
 
 tournamentSchema.virtual('teamCount').get(function () {
-  return this.teams.length;
+  return (this.teams || []).length;
 });
 
 tournamentSchema.virtual('fixtureCount').get(function () {
-  return this.fixtures.length;
+  return (this.fixtures || []).length;
 });
 
 module.exports = mongoose.model('Tournament', tournamentSchema);

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@services/api';
+import { onEvent } from '@services/socket';
 
 export interface TournamentTeam {
   _id: string;
@@ -91,6 +92,7 @@ interface TournamentState {
   fetchStandings: (tournamentId: string) => Promise<void>;
 
   clearCurrent: () => void;
+  initSocketListeners: () => () => void;
 }
 
 export const useTournamentStore = create<TournamentState>((set, get) => ({
@@ -183,4 +185,42 @@ export const useTournamentStore = create<TournamentState>((set, get) => ({
   },
 
   clearCurrent: () => set({ currentTournament: null, standings: [] }),
+
+  initSocketListeners: () => {
+    const unsubCreated = onEvent('TOURNAMENT_CREATED', (data: any) => {
+      const t: Tournament = data.tournament;
+      set((s) => {
+        const exists = s.tournaments.some((x) => x._id === t._id);
+        return exists ? {} : { tournaments: [t, ...s.tournaments] };
+      });
+    });
+
+    const unsubUpdated = onEvent('TOURNAMENT_UPDATED', (data: any) => {
+      const updated: Tournament = data.tournament;
+      set((s) => ({
+        tournaments: s.tournaments.map((x) => x._id === updated._id ? { ...x, ...updated } : x),
+        currentTournament: s.currentTournament?._id === updated._id
+          ? { ...s.currentTournament, ...updated }
+          : s.currentTournament,
+      }));
+    });
+
+    const unsubDeleted = onEvent('TOURNAMENT_DELETED', (data: any) => {
+      set((s) => ({
+        tournaments: s.tournaments.filter((x) => x._id !== data.tournamentId),
+        currentTournament: s.currentTournament?._id === data.tournamentId ? null : s.currentTournament,
+      }));
+    });
+
+    const unsubStandings = onEvent('TOURNAMENT_STANDINGS_UPDATED', (data: any) => {
+      set((s) => ({
+        standings: s.currentTournament?._id === data.tournamentId ? data.standings : s.standings,
+        currentTournament: s.currentTournament?._id === data.tournamentId
+          ? { ...s.currentTournament, standings: data.standings }
+          : s.currentTournament,
+      }));
+    });
+
+    return () => { unsubCreated(); unsubUpdated(); unsubDeleted(); unsubStandings(); };
+  },
 }));

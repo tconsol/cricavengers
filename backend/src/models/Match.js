@@ -90,6 +90,26 @@ const matchSchema = new mongoose.Schema({
   }],
   isPublic: { type: Boolean, default: true },
   tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null },
+
+  // Pre-match squad & role selections
+  squadA: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    name: String,
+    role: String,
+    jerseyNumber: { type: Number, default: null },
+  }],
+  squadB: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    name: String,
+    role: String,
+    jerseyNumber: { type: Number, default: null },
+  }],
+  captainA:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  wkA:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  sub12A:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  captainB:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  wkB:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  sub12B:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

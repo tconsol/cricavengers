@@ -54,9 +54,14 @@ export const leaveMatch = (matchId: string) => {
 };
 
 export const onMatchEvent = (
-  event: 'BALL_ADDED' | 'MATCH_UPDATED' | 'JOINED_MATCH',
+  event: 'BALL_ADDED' | 'MATCH_UPDATED' | 'JOINED_MATCH' | 'MATCH_STATE_CHANGED',
   cb: (data: unknown) => void
 ) => {
+  socket?.on(event, cb);
+  return () => { socket?.off(event, cb); };
+};
+
+export const onEvent = (event: string, cb: (data: any) => void): (() => void) => {
   socket?.on(event, cb);
   return () => { socket?.off(event, cb); };
 };

@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTournamentStore } from '@store/tournamentStore';
+import DrawerMenu from '@components/ui/DrawerMenu';
 
 const STATE_COLORS: Record<string, string> = {
   draft: '#6B7280',
@@ -95,6 +96,7 @@ export default function TournamentsScreen() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [mine, setMine]     = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = () => {
     const params: Record<string, string> = {};
@@ -111,8 +113,27 @@ export default function TournamentsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
+      <DrawerMenu isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
       <View className="px-4 py-4">
-        <Text className="text-white text-2xl font-bold mb-3">Tournaments</Text>
+        <View className="flex-row items-center justify-between mb-3">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => setDrawerOpen(true)}
+              style={{ width: 36, height: 36, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)' }}
+            >
+              <Ionicons name="menu" size={20} color="#fff" />
+            </TouchableOpacity>
+            <Text className="text-white text-2xl font-bold">Tournaments</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/tournament/create')}
+            style={{ backgroundColor: '#F59E0B', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          >
+            <Ionicons name="add" size={16} color="#000" />
+            <Text style={{ fontWeight: '700', color: '#000', fontSize: 13 }}>New</Text>
+          </TouchableOpacity>
+        </View>
         <View className="flex-row bg-white/10 rounded-xl px-3 py-2 items-center gap-2">
           <Ionicons name="search" size={18} color="#9CA3AF" />
           <TextInput
