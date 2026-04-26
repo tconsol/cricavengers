@@ -36,8 +36,8 @@ export default function NewBatsmanModal({ visible, onClose, match, innings, matc
     if (!selected) return;
     setSubmitting(true);
     try {
-      await api.put(`/matches/${matchId}/innings/start`, {
-        innings,
+      // Dedicated mid-innings endpoint — does NOT require a state transition
+      await api.put(`/scoring/matches/${matchId}/players`, {
         striker: selected,
         nonStriker: liveState?.nonStriker?._id || liveState?.nonStriker,
         bowler: liveState?.currentBowler?._id || liveState?.currentBowler,

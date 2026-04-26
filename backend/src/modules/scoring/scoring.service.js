@@ -61,6 +61,7 @@ const addBall = async (matchId, data, userId) => {
     isLegal: legal,
     strikerAfter: data.strikerAfter || null,
     nonStrikerAfter: data.nonStrikerAfter || null,
+    shotRegion: data.shotRegion || null,
   });
 
   // Update match innings state
@@ -244,7 +245,32 @@ const getAuditLog = async (matchId) => {
     .limit(200);
 };
 
+/**
+ * Update current players (striker / non-striker / bowler) mid-innings.
+ * Used after a wicket when the new batsman is selected.
+ */
+const setCurrentPlayers = async (matchId, { striker, nonStriker, bowler }) => {
+  const ScoreSummary = require('../../models/ScoreSummary');
+
+  const update = {};
+  if (striker    !== undefined) update['currentState.striker']       = striker    || null;
+  if (nonStriker !== undefined) update['currentState.nonStriker']    = nonStriker || null;
+  if (bowler     !== undefined) update['currentState.currentBowler'] = bowler     || null;
+
+  const summary = await ScoreSummary.findOneAndUpdate(
+    { matchId },
+    { $set: update },
+    { new: true },
+  )
+    .populate('currentState.striker', 'name')
+    .populate('currentState.nonStriker', 'name')
+    .populate('currentState.currentBowler', 'name');
+
+  return summary;
+};
+
 module.exports = {
   addBall, undoBall, editBall, deleteBall,
   getBalls, getRecentBalls, getAuditLog,
+  setCurrentPlayers,
 };

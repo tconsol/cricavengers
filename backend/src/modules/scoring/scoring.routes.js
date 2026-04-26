@@ -47,4 +47,11 @@ router.delete(
   controller.deleteBall
 );
 
+// Update current striker / non-striker / bowler mid-innings (e.g. after a wicket)
+router.put(
+  '/matches/:matchId/players',
+  requireMatchRole('scorer', 'umpire', 'organizer'),
+  controller.setCurrentPlayers
+);
+
 module.exports = router;

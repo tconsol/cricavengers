@@ -92,9 +92,9 @@ function computeInningsState(balls, maxOvers, maxWickets = 10) {
       state.extras.wides += extraRuns || 1;
       state.extras.total += extraRuns || 1;
     } else if (extraType === EXTRA_TYPES.NO_BALL) {
+      // Only the 1-run penalty goes to extras; off-bat runs go to the batsman's tally
       state.extras.noBalls += 1;
-      state.extras.total += 1 + batRuns; // no-ball penalty + runs off bat
-      if (extraRuns > 1) { state.extras.byes += extraRuns - 1; state.extras.total += extraRuns - 1; }
+      state.extras.total += 1;
     } else if (extraType === EXTRA_TYPES.BYE) {
       state.extras.byes += extraRuns;
       state.extras.total += extraRuns;

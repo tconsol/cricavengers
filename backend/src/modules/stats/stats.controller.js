@@ -1,13 +1,16 @@
 const statsService = require('./stats.service');
+const User = require('../../models/User');
 const { success } = require('../../utils/response');
 
 const getPlayerStats = async (req, res, next) => {
   try {
-    const [batting, bowling] = await Promise.all([
+    const [player, batting, bowling, fielding] = await Promise.all([
+      User.findById(req.params.playerId).select('name role avatar').lean(),
       statsService.getPlayerBattingStats(req.params.playerId),
       statsService.getPlayerBowlingStats(req.params.playerId),
+      statsService.getPlayerFieldingStats(req.params.playerId),
     ]);
-    success(res, { batting, bowling });
+    success(res, { name: player?.name, role: player?.role, avatar: player?.avatar, batting, bowling, fielding });
   } catch (err) { next(err); }
 };
 

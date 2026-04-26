@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { View, Text, Alert, TouchableOpacity } from 'react-native';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, Alert, TouchableOpacity, Animated } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,8 +12,10 @@ import RecentBalls from '@components/scoring/RecentBalls';
 import WicketModal from '@components/scoring/WicketModal';
 import NewBatsmanModal from '@components/scoring/NewBatsmanModal';
 import NewBowlerModal from '@components/scoring/NewBowlerModal';
+import GroundPicker from '@components/scoring/GroundPicker';
+import { generateCommentary } from '@utils/commentary';
 
-// ── Extra runs picker shown inline when an extra type is tapped ──
+// ── Extra runs picker ─────────────────────────────────────────
 const EXTRA_META: Record<string, { title: string; subtitle: string; color: string }> = {
   wide:    { title: 'Wide',     subtitle: 'Runs from the wide? (1 penalty auto-added)', color: '#B45309' },
   no_ball: { title: 'No Ball',  subtitle: 'Runs scored off the bat?',                  color: '#C2410C' },
@@ -23,15 +25,10 @@ const EXTRA_META: Record<string, { title: string; subtitle: string; color: strin
 
 function ExtraRunsPicker({
   type, onConfirm, onCancel,
-}: {
-  type: string;
-  onConfirm: (runs: number) => void;
-  onCancel: () => void;
-}) {
+}: { type: string; onConfirm: (runs: number) => void; onCancel: () => void }) {
   const meta = EXTRA_META[type] || { title: type, subtitle: 'Runs?', color: '#374151' };
   return (
     <View style={{ flex: 1 }}>
-      {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '800', color: meta.color }}>{meta.title}</Text>
@@ -45,7 +42,6 @@ function ExtraRunsPicker({
         </TouchableOpacity>
       </View>
 
-      {/* Run buttons 0-6 grid */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
         {[0, 1, 2, 3, 4, 6].map((r) => (
           <TouchableOpacity
@@ -67,7 +63,6 @@ function ExtraRunsPicker({
         ))}
       </View>
 
-      {/* Dotted 5 */}
       <TouchableOpacity
         onPress={() => onConfirm(5)}
         style={{
@@ -89,7 +84,33 @@ function ExtraRunsPicker({
   );
 }
 
-// ────────────────────────────────────────────────────────────────
+// ── Commentary Toast ──────────────────────────────────────────
+function CommentaryToast({ text, visible }: { text: string; visible: boolean }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible && text) {
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.delay(2600),
+        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible, text]);
+
+  if (!text) return null;
+  return (
+    <Animated.View style={{
+      position: 'absolute', bottom: 110, left: 12, right: 12,
+      backgroundColor: '#1E3A5F', borderRadius: 14,
+      paddingHorizontal: 16, paddingVertical: 10, opacity, zIndex: 100,
+    }}>
+      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', lineHeight: 18 }}>{text}</Text>
+    </Animated.View>
+  );
+}
+
+// ── Main Scoring Screen ───────────────────────────────────────
 export default function ScoringScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { currentMatch, fetchMatch } = useMatchStore();
@@ -100,8 +121,18 @@ export default function ScoringScreen() {
   const [showNewBowler, setShowNewBowler] = useState(false);
   const [isSubmitting, setIsSubmitting]   = useState(false);
 
-  // Extra flow state
+  // Extra flow
   const [pendingExtraType, setPendingExtraType] = useState<string | null>(null);
+
+  // Ground picker flow — holds the ball payload while waiting for shot region
+  const [showGroundPicker, setShowGroundPicker] = useState(false);
+  const [pendingBall, setPendingBall] = useState<any>(null);
+  const [pickerCommentary, setPickerCommentary] = useState('');
+
+  // Commentary toast
+  const [lastCommentary, setLastCommentary]       = useState('');
+  const [commentaryVisible, setCommentaryVisible] = useState(false);
+  const commentaryKey = useRef(0);
 
   const innings    = liveState?.innings || 1;
   const striker    = liveState?.striker;
@@ -114,18 +145,22 @@ export default function ScoringScreen() {
     fetchRecentBalls(id!, innings);
   }, [id]);
 
-  const submitBall = async (ball: any) => {
-    if (!striker || !bowler) {
-      Alert.alert('Setup Required', 'Please set batsmen and bowler first');
-      return;
-    }
+  // Show commentary toast
+  const showCommentary = useCallback((text: string) => {
+    commentaryKey.current += 1;
+    setLastCommentary(text);
+    setCommentaryVisible(false);
+    requestAnimationFrame(() => setCommentaryVisible(true));
+  }, []);
+
+  // Actually send the ball to server (called after ground picker)
+  const doSubmitBall = async (ball: any) => {
     setIsSubmitting(true);
     try {
       await addBall(id!, ball);
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await fetchRecentBalls(id!, innings);
 
-      // Prompt for new bowler when over is complete
       const ballsAfter = liveState?.ball ?? 0;
       if (ballsAfter === 0 && (liveState?.over ?? 0) > 0) {
         setShowNewBowler(true);
@@ -137,8 +172,50 @@ export default function ScoringScreen() {
     }
   };
 
-  // Normal run (no extra)
-  const handleBallPress = useCallback(async (runs: number) => {
+  // Ground picker confirmed (region may be null if skipped)
+  const handleGroundConfirm = useCallback(async (region: string | null) => {
+    setShowGroundPicker(false);
+    if (!pendingBall) return;
+
+    const ball = region ? { ...pendingBall, shotRegion: region } : pendingBall;
+    setPendingBall(null);
+
+    // Show commentary toast
+    const commentary = generateCommentary(
+      ball,
+      striker?.name || 'Batsman',
+      bowler?.name  || 'Bowler',
+    );
+    showCommentary(commentary);
+
+    // Haptics for highlights
+    if (ball.wicket) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } else if ((ball.runs ?? 0) >= 4) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    await doSubmitBall(ball);
+  }, [pendingBall, striker, bowler]);
+
+  // Stage a ball → open ground picker
+  const stageBall = useCallback((ball: any) => {
+    if (!striker || !bowler) {
+      Alert.alert('Setup Required', 'Please set batsmen and bowler first');
+      return;
+    }
+    const commentary = generateCommentary(
+      ball,
+      striker?.name || 'Batsman',
+      bowler?.name  || 'Bowler',
+    );
+    setPendingBall(ball);
+    setPickerCommentary(commentary);
+    setShowGroundPicker(true);
+  }, [striker, bowler]);
+
+  // Normal run button pressed
+  const handleBallPress = useCallback((runs: number) => {
     if (!striker || !bowler) {
       Alert.alert('Setup Required', 'Please set batsmen and bowler first');
       return;
@@ -147,7 +224,7 @@ export default function ScoringScreen() {
     const nsId = nonStriker?._id || nonStriker;
     const bId  = bowler?._id   || bowler;
 
-    const ball = {
+    stageBall({
       innings: innings as 1 | 2,
       batsman: sId,
       bowler:  bId,
@@ -155,11 +232,10 @@ export default function ScoringScreen() {
       extras: null,
       strikerAfter:    runs % 2 !== 0 ? nsId : sId,
       nonStrikerAfter: runs % 2 !== 0 ? sId  : nsId,
-    };
-    await submitBall(ball);
-  }, [striker, nonStriker, bowler, innings]);
+    });
+  }, [striker, nonStriker, bowler, innings, stageBall]);
 
-  // Extra type button pressed → show picker
+  // Extra type button pressed → show extra picker first
   const handleExtraPress = useCallback((type: string) => {
     if (!striker || !bowler) {
       Alert.alert('Setup Required', 'Please set batsmen and bowler first');
@@ -168,8 +244,8 @@ export default function ScoringScreen() {
     setPendingExtraType(type);
   }, [striker, bowler]);
 
-  // Extra runs selected from picker
-  const handleExtraRunsConfirm = useCallback(async (extraRuns: number) => {
+  // Extra runs selected → stage ball → open ground picker
+  const handleExtraRunsConfirm = useCallback((extraRuns: number) => {
     const type = pendingExtraType!;
     setPendingExtraType(null);
 
@@ -177,35 +253,29 @@ export default function ScoringScreen() {
     const nsId = nonStriker?._id || nonStriker;
     const bId  = bowler?._id   || bowler;
 
-    let runs   = 0;
+    let runs: number;
     let extras: any;
     let strikerAfter: any;
     let nonStrikerAfter: any;
 
     if (type === 'wide') {
-      // Wide: always 0 bat runs; penalty 1 + boundary runs go to extras
-      // Strike does NOT rotate on a wide
       runs   = 0;
       extras = { type: 'wide', runs: 1 + extraRuns };
       strikerAfter    = sId;
       nonStrikerAfter = nsId;
     } else if (type === 'no_ball') {
-      // No Ball: off-bat runs credited to batsman; 1 penalty always to extras
-      // Strike rotates based on off-bat runs
       runs   = extraRuns;
       extras = { type: 'no_ball', runs: 1 };
       strikerAfter    = extraRuns % 2 !== 0 ? nsId : sId;
       nonStrikerAfter = extraRuns % 2 !== 0 ? sId  : nsId;
     } else {
-      // Bye / Leg Bye: 0 bat runs; runs go to extras
-      // Strike rotates based on bye runs
       runs   = 0;
       extras = { type, runs: extraRuns };
       strikerAfter    = extraRuns % 2 !== 0 ? nsId : sId;
       nonStrikerAfter = extraRuns % 2 !== 0 ? sId  : nsId;
     }
 
-    const ball = {
+    stageBall({
       innings: innings as 1 | 2,
       batsman: sId,
       bowler:  bId,
@@ -213,11 +283,10 @@ export default function ScoringScreen() {
       extras,
       strikerAfter,
       nonStrikerAfter,
-    };
-    await submitBall(ball);
-  }, [pendingExtraType, striker, nonStriker, bowler, innings]);
+    });
+  }, [pendingExtraType, striker, nonStriker, bowler, innings, stageBall]);
 
-  // Wicket
+  // Wicket: submit immediately (no ground picker before — show picker after)
   const handleWicketBall = async (runs: number, wicketData: any) => {
     if (!striker || !bowler) {
       Alert.alert('Setup Required', 'Please set batsmen and bowler first');
@@ -236,20 +305,55 @@ export default function ScoringScreen() {
       strikerAfter:    null,
       nonStrikerAfter: nsId,
     };
+
     setShowWicket(false);
+
+    // Stage ball for ground picker (prominent for wicket)
+    const commentary = generateCommentary(ball, striker?.name || 'Batsman', bowler?.name || 'Bowler');
+    setPendingBall(ball);
+    setPickerCommentary(commentary);
+    setShowGroundPicker(true);
+  };
+
+  // After ground picker for wicket, need to show new batter
+  const handleGroundConfirmWithWicket = useCallback(async (region: string | null) => {
+    setShowGroundPicker(false);
+    if (!pendingBall) return;
+
+    const ball = region ? { ...pendingBall, shotRegion: region } : pendingBall;
+    const isWicket = !!ball.wicket;
+    setPendingBall(null);
+
+    const commentary = generateCommentary(ball, striker?.name || 'Batsman', bowler?.name || 'Bowler');
+    showCommentary(commentary);
+
     setIsSubmitting(true);
     try {
       await addBall(id!, ball);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      if (isWicket) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      } else if ((ball.runs ?? 0) >= 4) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       await fetchRecentBalls(id!, innings);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to record wicket');
+      Alert.alert('Error', err.message || 'Failed to record ball');
       setIsSubmitting(false);
       return;
     }
     setIsSubmitting(false);
-    setShowNewBatter(true);
-  };
+
+    if (isWicket) {
+      setShowNewBatter(true);
+    } else {
+      const ballsAfter = liveState?.ball ?? 0;
+      if (ballsAfter === 0 && (liveState?.over ?? 0) > 0) {
+        setShowNewBowler(true);
+      }
+    }
+  }, [pendingBall, striker, bowler, innings, id]);
 
   const handleUndo = () => {
     Alert.alert('Undo Last Ball', 'This will remove the last ball and recompute scores.', [
@@ -270,6 +374,7 @@ export default function ScoringScreen() {
   };
 
   const inningsSummary = summary?.innings?.[innings - 1];
+  const isWicketPending = pendingBall?.wicket != null;
 
   return (
     <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
@@ -343,9 +448,23 @@ export default function ScoringScreen() {
           />
         )}
 
-        {/* Recent Balls always visible */}
         <RecentBalls matchId={id!} compact />
       </View>
+
+      {/* Commentary Toast */}
+      <CommentaryToast text={lastCommentary} visible={commentaryVisible} />
+
+      {/* Ground Picker */}
+      <GroundPicker
+        visible={showGroundPicker}
+        runs={pendingBall?.runs ?? 0}
+        isWicket={isWicketPending}
+        isExtra={!!pendingBall?.extras?.type}
+        batsmanName={striker?.name || 'Batsman'}
+        bowlerName={bowler?.name || 'Bowler'}
+        commentary={pickerCommentary}
+        onConfirm={isWicketPending ? handleGroundConfirmWithWicket : handleGroundConfirm}
+      />
 
       {/* Modals */}
       <WicketModal

@@ -66,4 +66,11 @@ const getAuditLog = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { addBall, undoBall, editBall, deleteBall, getBalls, getRecentBalls, getLiveSummaryCtrl, getAuditLog };
+const setCurrentPlayers = async (req, res, next) => {
+  try {
+    const summary = await scoringService.setCurrentPlayers(req.params.matchId, req.body);
+    success(res, { summary }, 'Players updated');
+  } catch (err) { next(err); }
+};
+
+module.exports = { addBall, undoBall, editBall, deleteBall, getBalls, getRecentBalls, getLiveSummaryCtrl, getAuditLog, setCurrentPlayers };
