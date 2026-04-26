@@ -1,24 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@store/authStore';
-import { api } from '@services/api';
 import DrawerMenu from '@components/ui/DrawerMenu';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [stats, setStats]   = useState<any>(null);
-
-  useEffect(() => {
-    if (user?._id) {
-      api.get(`/stats/players/${user._id}`)
-        .then((res: any) => setStats(res.data))
-        .catch(() => {});
-    }
-  }, [user?._id]);
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure?', [
@@ -31,13 +21,6 @@ export default function ProfileScreen() {
       },
     ]);
   };
-
-  const StatBox = ({ label, value }: { label: string; value: string | number }) => (
-    <View className="flex-1 bg-white rounded-2xl p-4 items-center shadow-sm">
-      <Text className="text-2xl font-bold text-primary">{value}</Text>
-      <Text className="text-xs text-gray-500 mt-1">{label}</Text>
-    </View>
-  );
 
   return (
     <SafeAreaView className="flex-1 bg-primary" edges={['top']}>
@@ -68,37 +51,22 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView className="flex-1 bg-surface rounded-t-3xl" showsVerticalScrollIndicator={false}>
-        {/* Batting Stats */}
-        {stats?.batting && (
-          <View className="px-4 pt-6">
-            <Text className="text-base font-bold text-gray-700 mb-3">🏏 Batting Career</Text>
-            <View className="flex-row gap-3 mb-3">
-              <StatBox label="Matches" value={stats.batting.matches || 0} />
-              <StatBox label="Runs" value={stats.batting.totalRuns || 0} />
-              <StatBox label="High Score" value={stats.batting.highScore || 0} />
-            </View>
-            <View className="flex-row gap-3">
-              <StatBox label="Average" value={(stats.batting.average || 0).toFixed(1)} />
-              <StatBox label="Strike Rate" value={(stats.batting.strikeRate || 0).toFixed(1)} />
-              <StatBox label="Sixes" value={stats.batting.sixes || 0} />
-            </View>
-          </View>
-        )}
-
-        {/* Bowling Stats */}
-        {stats?.bowling && (
-          <View className="px-4 pt-4">
-            <Text className="text-base font-bold text-gray-700 mb-3">⚡ Bowling Career</Text>
-            <View className="flex-row gap-3 mb-3">
-              <StatBox label="Wickets" value={stats.bowling.totalWickets || 0} />
-              <StatBox label="Economy" value={(stats.bowling.economy || 0).toFixed(2)} />
-              <StatBox label="Avg" value={stats.bowling.average ? stats.bowling.average.toFixed(1) : '-'} />
-            </View>
+        {/* Career Stats */}
+        {user?._id && (
+          <View className="mx-4 mt-6">
+            <TouchableOpacity
+              className="flex-row items-center bg-primary rounded-2xl px-4 py-4 shadow-sm"
+              onPress={() => router.push(`/player/${user._id}` as any)}
+            >
+              <Ionicons name="stats-chart" size={22} color="#fff" />
+              <Text className="flex-1 ml-3 font-bold text-white text-base">Career Stats</Text>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </TouchableOpacity>
           </View>
         )}
 
         {/* Menu Items */}
-        <View className="mx-4 mt-6 mb-8">
+        <View className="mx-4 mt-4 mb-8">
           {[
             { icon: 'person-outline', label: 'Edit Profile', onPress: () => {} },
             { icon: 'shield-outline', label: 'Change Password', onPress: () => {} },

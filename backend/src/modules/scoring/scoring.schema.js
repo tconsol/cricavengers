@@ -22,6 +22,10 @@ const addBallSchema = Joi.object({
   strikerAfter: Joi.string().length(24).optional().allow(null),
   nonStrikerAfter: Joi.string().length(24).optional().allow(null),
   newBatsman: Joi.string().length(24).optional().allow(null),
+  shotRegion: Joi.string().valid(
+    'fine_leg', 'square_leg', 'mid_wicket', 'mid_on', 'long_on', 'straight',
+    'long_off', 'mid_off', 'cover', 'point', 'third_man', 'gully'
+  ).optional().allow(null, ''),
 });
 
 const editBallSchema = Joi.object({

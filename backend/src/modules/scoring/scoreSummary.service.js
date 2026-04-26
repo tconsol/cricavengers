@@ -92,7 +92,10 @@ const recomputeSummary = async (matchId) => {
   };
 
   if (latestBall) {
-    updateData['currentState.striker'] = latestBall.strikerAfter || latestBall.batsman;
+    // strikerAfter === null means wicket — keep null (new batsman not yet set).
+    // Only fall back to batsman if field was never stored (undefined).
+    updateData['currentState.striker'] =
+      latestBall.strikerAfter !== undefined ? latestBall.strikerAfter : latestBall.batsman;
     updateData['currentState.nonStriker'] = latestBall.nonStrikerAfter;
     updateData['currentState.currentBowler'] = latestBall.bowler;
   }

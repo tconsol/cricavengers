@@ -55,6 +55,14 @@ const ballSchema = new mongoose.Schema({
   cumulativeRuns: { type: Number, default: 0 },
   cumulativeWickets: { type: Number, default: 0 },
 
+  // Where the ball went on the field
+  shotRegion: {
+    type: String,
+    enum: ['fine_leg', 'square_leg', 'mid_wicket', 'mid_on', 'long_on', 'straight',
+           'long_off', 'mid_off', 'cover', 'point', 'third_man', 'gully', null],
+    default: null,
+  },
+
   // For edit/undo tracking
   editedAt: { type: Date, default: null },
   editedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
