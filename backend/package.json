@@ -9,6 +9,9 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "seed": "node src/utils/seed.js",
+    "seed:full": "node src/utils/seed.js --full",
+    "seed:match": "node src/utils/seed.js --match",
+    "seed:reset": "node src/utils/seed.js --reset",
     "lint": "eslint src/"
   },
   "dependencies": {

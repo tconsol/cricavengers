@@ -25,6 +25,8 @@ const app = express();
 app.use(helmet());
 app.use(cors({
   origin: (origin, cb) => {
+    // Allow all origins in development; mobile apps often omit Origin header entirely
+    if (process.env.NODE_ENV !== 'production') return cb(null, true);
     const allowed = (process.env.ALLOWED_ORIGINS || '').split(',');
     if (!origin || allowed.includes(origin)) return cb(null, true);
     cb(new Error('Not allowed by CORS'));

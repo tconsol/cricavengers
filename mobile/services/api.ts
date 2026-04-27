@@ -1,8 +1,5 @@
 import { API_BASE_URL } from '@constants/index';
-
-// getState() is called at request time, never at import time, so the
-// authStore -> api -> authStore cycle is safe at runtime.
-import { useAuthStore } from '@store/authStore';
+import { tokenStorage } from './tokenStorage';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -44,7 +41,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     url += `?${qs}`;
   }
 
-  const { accessToken } = useAuthStore.getState();
+  const accessToken = tokenStorage.getAccessToken();
 
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -88,7 +85,7 @@ async function _handleTokenRefresh<T>(endpoint: string, options: RequestOptions)
   }
 
   isRefreshing = true;
-  const { refreshToken, setTokens, logout } = useAuthStore.getState();
+  const refreshToken = tokenStorage.getRefreshToken();
 
   try {
     const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -102,7 +99,7 @@ async function _handleTokenRefresh<T>(endpoint: string, options: RequestOptions)
 
     const newAccessToken: string = data.data.accessToken;
     const newRefreshToken: string = data.data.refreshToken;
-    setTokens(newAccessToken, newRefreshToken);
+    tokenStorage.setTokens(newAccessToken, newRefreshToken);
     processQueue(null, newAccessToken);
 
     return request<T>(endpoint, {
@@ -111,7 +108,7 @@ async function _handleTokenRefresh<T>(endpoint: string, options: RequestOptions)
     });
   } catch (err) {
     processQueue(err, null);
-    logout();
+    tokenStorage.triggerLogout();
     throw err;
   } finally {
     isRefreshing = false;

@@ -112,8 +112,8 @@ const recomputeSummary = async (matchId) => {
 const getFullScorecard = async (matchId) => {
   const [match, summary] = await Promise.all([
     Match.findById(matchId)
-      .populate('teamA', 'name shortName logo color')
-      .populate('teamB', 'name shortName logo color'),
+      .populate('teamA', 'name shortName logo color players')
+      .populate('teamB', 'name shortName logo color players'),
     ScoreSummary.findOne({ matchId })
       .populate('currentState.striker', 'name')
       .populate('currentState.nonStriker', 'name')
@@ -122,7 +122,92 @@ const getFullScorecard = async (matchId) => {
 
   if (!match) throw new AppError('Match not found', 404, 'NOT_FOUND');
 
-  return { match, summary };
+  const summaryObj = summary ? summary.toObject() : null;
+
+  if (summaryObj && summaryObj.innings) {
+    for (const inningsNum of [1, 2]) {
+      if (!summaryObj.innings[inningsNum - 1]) continue;
+
+      const balls = await Ball.find({ matchId, innings: inningsNum, isDeleted: false })
+        .sort({ over: 1, ball: 1 }).lean();
+
+      if (balls.length === 0) continue;
+
+      const sc = buildScorecard(balls, match.totalOvers);
+
+      const partnerIds = [...new Set(
+        sc.partnerships.flatMap(p => [p.batter1, p.batter2].filter(Boolean)),
+      )];
+      const partnerUsers = partnerIds.length > 0
+        ? await User.find({ _id: { $in: partnerIds } }).select('name').lean()
+        : [];
+      const partnerNameMap = {};
+      partnerUsers.forEach(u => { partnerNameMap[u._id.toString()] = u.name; });
+
+      summaryObj.innings[inningsNum - 1].partnerships = sc.partnerships.map(p => ({
+        ...p,
+        batter1Name: partnerNameMap[p.batter1] || 'Unknown',
+        batter2Name: p.batter2 ? (partnerNameMap[p.batter2] || 'Unknown') : null,
+      }));
+      summaryObj.innings[inningsNum - 1].perOverData = sc.perOverData;
+
+      // Ball-by-ball labels per batsman (for player card modal)
+      const ballsByPlayer = {};
+      for (const ball of balls) {
+        if (ball.isDeleted) continue;
+        const bid = ball.batsman?.toString();
+        if (!bid) continue;
+        if (!ballsByPlayer[bid]) ballsByPlayer[bid] = [];
+        let label;
+        if (ball.wicket) label = 'W';
+        else if (ball.extras?.type === 'wide') label = 'Wd';
+        else if (ball.extras?.type === 'no_ball') label = 'Nb';
+        else label = String(ball.runs || 0);
+        ballsByPlayer[bid].push(label);
+      }
+      summaryObj.innings[inningsNum - 1].ballsByPlayer = ballsByPlayer;
+
+      // Runs per shot region per batsman (for wagon wheel)
+      const runsByRegion = {};
+      for (const ball of balls) {
+        if (ball.isDeleted || !ball.shotRegion) continue;
+        const bid = ball.batsman?.toString();
+        if (!bid) continue;
+        if (!runsByRegion[bid]) runsByRegion[bid] = {};
+        const r = ball.shotRegion;
+        runsByRegion[bid][r] = (runsByRegion[bid][r] || 0) + (ball.runs || 0);
+      }
+      summaryObj.innings[inningsNum - 1].runsByRegion = runsByRegion;
+    }
+  }
+
+  return { match, summary: summaryObj };
+};
+
+const getMatchGraphData = async (matchId) => {
+  const match = await Match.findById(matchId);
+  if (!match) throw new AppError('Match not found', 404, 'NOT_FOUND');
+
+  const innings = [];
+
+  for (const inningsNum of [1, 2]) {
+    const balls = await Ball.find({ matchId, innings: inningsNum, isDeleted: false })
+      .sort({ over: 1, ball: 1 }).lean();
+
+    if (balls.length === 0) continue;
+
+    const sc = buildScorecard(balls, match.totalOvers);
+
+    let cumulative = 0;
+    const worm = sc.perOverData.map(o => {
+      cumulative += o.runs;
+      return { over: o.over, totalRuns: cumulative };
+    });
+
+    innings.push({ inningsNum, overs: sc.perOverData, worm });
+  }
+
+  return { innings };
 };
 
 const getLiveSummary = async (matchId) => {
@@ -132,4 +217,4 @@ const getLiveSummary = async (matchId) => {
     .populate('currentState.currentBowler', 'name');
 };
 
-module.exports = { recomputeSummary, getFullScorecard, getLiveSummary };
+module.exports = { recomputeSummary, getFullScorecard, getLiveSummary, getMatchGraphData };

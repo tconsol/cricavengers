@@ -26,6 +26,46 @@ function overString(totalBalls) {
 }
 
 // -------------------------------------------------------
+// Partnership computation from ball log
+// -------------------------------------------------------
+
+function computePartnerships(balls) {
+  const partnerships = [];
+  let p1 = null, p2 = null;
+  let p1Runs = 0, p2Runs = 0;
+  let pRuns = 0, pBalls = 0;
+
+  for (const ball of balls) {
+    if (ball.isDeleted) continue;
+    const legal = isLegalDelivery(ball);
+    const striker = ball.batsman?.toString();
+    const batRuns = ball.runs || 0;
+
+    if (!p1) p1 = striker;
+    else if (!p2 && striker !== p1) p2 = striker;
+
+    pRuns += ballTotalRuns(ball);
+    if (legal) pBalls++;
+    if (striker === p1) p1Runs += batRuns;
+    else if (striker === p2) p2Runs += batRuns;
+
+    if (ball.wicket) {
+      partnerships.push({ batter1: p1, batter2: p2, runs1: p1Runs, runs2: p2Runs, totalRuns: pRuns, balls: pBalls });
+      const outId = ball.wicket.batsmanOut?.toString();
+      const survivor = outId === p1 ? p2 : p1;
+      p1 = survivor; p2 = null;
+      p1Runs = 0; p2Runs = 0; pRuns = 0; pBalls = 0;
+    }
+  }
+
+  if (p1 && (pBalls > 0 || pRuns > 0)) {
+    partnerships.push({ batter1: p1, batter2: p2, runs1: p1Runs, runs2: p2Runs, totalRuns: pRuns, balls: pBalls, isActive: true });
+  }
+
+  return partnerships;
+}
+
+// -------------------------------------------------------
 // Strike rotation logic
 // -------------------------------------------------------
 
@@ -266,6 +306,26 @@ function buildScorecard(balls, maxOvers, maxWickets = 10) {
     ...s,
   }));
 
+  // Per-over data for charts and over scroller
+  const overMap = {};
+  for (const ball of balls) {
+    if (ball.isDeleted) continue;
+    const ov = ball.over ?? 0;
+    if (!overMap[ov]) overMap[ov] = { runs: 0, wickets: 0, balls: [] };
+    overMap[ov].runs += ballTotalRuns(ball);
+    if (ball.wicket) overMap[ov].wickets++;
+    let label;
+    if (ball.wicket) label = 'W';
+    else if (ball.extras?.type === 'wide') label = 'Wd';
+    else if (ball.extras?.type === 'no_ball') label = 'Nb';
+    else label = String(ball.runs || 0);
+    overMap[ov].balls.push(label);
+  }
+  const perOverData = Object.keys(overMap).map(Number).sort((a, b) => a - b)
+    .map(ov => ({ over: ov + 1, runs: overMap[ov].runs, wickets: overMap[ov].wickets, balls: overMap[ov].balls }));
+
+  const rawPartnerships = computePartnerships(balls);
+
   return {
     totalRuns: state.totalRuns,
     wickets: state.wickets,
@@ -277,6 +337,8 @@ function buildScorecard(balls, maxOvers, maxWickets = 10) {
     batting: battingList,
     bowling: bowlingList,
     fallOfWickets: state.fallOfWickets,
+    partnerships: rawPartnerships,
+    perOverData,
     isCompleted: state.isCompleted,
     completionReason: state.completionReason,
     currentState: {
@@ -325,6 +387,7 @@ function computeMatchResult(firstInnings, secondInnings, maxWickets = 10) {
 module.exports = {
   computeInningsState,
   buildScorecard,
+  computePartnerships,
   validateBallInput,
   resolveStrikeAfterBall,
   computeMatchResult,

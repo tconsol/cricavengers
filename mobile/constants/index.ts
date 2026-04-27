@@ -1,5 +1,9 @@
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:5000/api/v1';
-export const SOCKET_URL  = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://10.0.2.2:5000';
+// 10.0.2.2 = emulator localhost; replace with your machine's LAN IP for Expo Go / physical device
+const API_HOST = process.env.EXPO_PUBLIC_API_HOST || '192.168.1.14';
+const API_PORT = process.env.EXPO_PUBLIC_API_PORT || '5000';
+
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${API_HOST}:${API_PORT}/api/v1`;
+export const SOCKET_URL  = process.env.EXPO_PUBLIC_SOCKET_URL || `http://${API_HOST}:${API_PORT}`;
 
 export const MATCH_STATES = {
   NOT_STARTED:    'NOT_STARTED',

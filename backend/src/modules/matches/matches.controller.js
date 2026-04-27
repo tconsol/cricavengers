@@ -37,6 +37,13 @@ const getMatchScorecard = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const getMatchGraphs = async (req, res, next) => {
+  try {
+    const graphData = await scoreSummaryService.getMatchGraphData(req.params.id);
+    success(res, { graphData });
+  } catch (err) { next(err); }
+};
+
 const setToss = async (req, res, next) => {
   try {
     const match = await matchesService.setToss(req.params.id, req.body, req.userId);
@@ -73,6 +80,6 @@ const abandonMatch = async (req, res, next) => {
 };
 
 module.exports = {
-  createMatch, getMatches, getLiveMatches, getMatch, getMatchScorecard,
+  createMatch, getMatches, getLiveMatches, getMatch, getMatchScorecard, getMatchGraphs,
   setToss, startInnings, endInnings, addRole, abandonMatch,
 };

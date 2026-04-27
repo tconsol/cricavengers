@@ -16,12 +16,13 @@ const rateLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 20,
   message: {
     success: false,
     code: 'RATE_LIMIT_EXCEEDED',
     message: 'Too many auth attempts, please try again in 15 minutes',
   },
+  skip: () => process.env.NODE_ENV === 'development',
 });
 
 const scoringLimiter = rateLimit({

@@ -7,7 +7,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useMatchStore } from '@store/matchStore';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 
 // ─── Coin face ────────────────────────────────────────────────
 function CoinFace({ side, size = 120 }: { side: 'heads' | 'tails'; size?: number }) {
@@ -149,7 +149,7 @@ export default function TossScreen() {
 
   useEffect(() => {
     fetchMatch(id!);
-    return () => { soundRef.current?.unloadAsync().catch(() => {}); };
+    return () => { soundRef.current?.remove(); };
   }, [id]);
 
   const match = currentMatch;
@@ -159,12 +159,12 @@ export default function TossScreen() {
 
   const playSound = async () => {
     try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      const { sound } = await Audio.Sound.createAsync(
+      await setAudioModeAsync({ playsInSilentModeIOS: true });
+      const player = createAudioPlayer(
         require('../../../../assets/freesound_community-coin-flip-88793.mp3'),
-        { shouldPlay: true },
       );
-      soundRef.current = sound;
+      player.play();
+      soundRef.current = player;
     } catch { /* audio is optional */ }
   };
 

@@ -13,6 +13,7 @@ router.get('/', controller.getMatches);
 router.get('/live', controller.getLiveMatches);
 router.get('/:id', controller.getMatch);
 router.get('/:id/scorecard', controller.getMatchScorecard);
+router.get('/:id/graphs', controller.getMatchGraphs);
 
 router.post('/:id/toss', requireMatchRole('organizer', 'scorer', 'umpire'), validate(tossSchema), controller.setToss);
 router.post('/:id/innings/start', requireMatchRole('organizer', 'scorer', 'umpire'), validate(setPlayersSchema), controller.startInnings);
