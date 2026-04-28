@@ -61,11 +61,12 @@ const initSocket = (server) => {
 
   _emitMatchUpdate = (matchId, event, data) => {
     if (!io) return;
-    io.to(`match:${matchId}`).emit(event, {
-      matchId,
-      timestamp: new Date().toISOString(),
-      ...data,
-    });
+    const payload = { matchId, timestamp: new Date().toISOString(), ...data };
+    io.to(`match:${matchId}`).emit(event, payload);
+    // State changes also go to the global room so home screen updates without joining a match room
+    if (event === 'MATCH_STATE_CHANGED') {
+      io.to('global').emit(event, payload);
+    }
   };
 
   logger.info('Socket.IO initialised');

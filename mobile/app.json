@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "CricAvengers",
-    "slug": "cricavengers",
+    "slug": "cricpulse",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,7 +25,20 @@
         "backgroundColor": "#1E3A5F"
       },
       "package": "com.cricavengers.app",
-      "edgeToEdgeLayoutEnabled": true
+      "versionCode": 1,
+      "compileSdkVersion": 35,
+      "targetSdkVersion": 35,
+      "minSdkVersion": 24,
+      "edgeToEdgeLayoutEnabled": true,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -44,10 +57,23 @@
         }
       ],
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CricAvengers needs access to your photos to upload profile pictures and team logos."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0e32552b-6624-46ad-b327-dac96b7afd45"
+      }
+    },
+    "owner": "dhanunjay20"
   }
 }

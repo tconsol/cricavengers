@@ -6,6 +6,10 @@ const MATCH_STATES = {
   FIRST_INNINGS: 'FIRST_INNINGS',
   INNINGS_BREAK: 'INNINGS_BREAK',
   SECOND_INNINGS: 'SECOND_INNINGS',
+  SUPER_OVER_BREAK: 'SUPER_OVER_BREAK',
+  SUPER_OVER_1: 'SUPER_OVER_1',
+  SUPER_OVER_INNINGS_BREAK: 'SUPER_OVER_INNINGS_BREAK',
+  SUPER_OVER_2: 'SUPER_OVER_2',
   COMPLETED: 'COMPLETED',
   ABANDONED: 'ABANDONED',
 };
@@ -16,7 +20,11 @@ const VALID_TRANSITIONS = {
   TOSS_DONE: ['FIRST_INNINGS', 'ABANDONED'],
   FIRST_INNINGS: ['INNINGS_BREAK', 'ABANDONED'],
   INNINGS_BREAK: ['SECOND_INNINGS', 'ABANDONED'],
-  SECOND_INNINGS: ['COMPLETED', 'ABANDONED'],
+  SECOND_INNINGS: ['COMPLETED', 'SUPER_OVER_BREAK', 'ABANDONED'],
+  SUPER_OVER_BREAK: ['SUPER_OVER_1', 'COMPLETED'],
+  SUPER_OVER_1: ['SUPER_OVER_INNINGS_BREAK'],
+  SUPER_OVER_INNINGS_BREAK: ['SUPER_OVER_2'],
+  SUPER_OVER_2: ['COMPLETED'],
   COMPLETED: [],
   ABANDONED: [],
 };
@@ -75,6 +83,16 @@ const matchSchema = new mongoose.Schema({
   innings: {
     first: { type: inningsSchema, default: null },
     second: { type: inningsSchema, default: null },
+  },
+  superOver: {
+    first: { type: inningsSchema, default: null },
+    second: { type: inningsSchema, default: null },
+    result: {
+      winner: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+      winMargin: { type: Number, default: null },
+      winType: { type: String, enum: ['runs', 'wickets', 'tie', null], default: null },
+      description: { type: String, default: null },
+    },
   },
   result: {
     winner: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },

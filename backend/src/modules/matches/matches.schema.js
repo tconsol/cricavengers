@@ -35,7 +35,7 @@ const tossSchema = Joi.object({
 });
 
 const setPlayersSchema = Joi.object({
-  innings: Joi.number().valid(1, 2).required(),
+  innings: Joi.number().valid(1, 2, 3, 4).required(),
   striker: Joi.string().length(24).required(),
   nonStriker: Joi.string().length(24).required(),
   bowler: Joi.string().length(24).required(),

@@ -63,6 +63,7 @@ export interface Tournament {
   standings: StandingsEntry[];
   prizePool: string;
   rules: string;
+  logo: string | null;
   teamCount: number;
   fixtureCount: number;
 }

@@ -4,7 +4,7 @@ import { enqueueAction, syncQueue } from '@services/offlineSync';
 import NetInfo from '@react-native-community/netinfo';
 
 interface BallData {
-  innings: 1 | 2;
+  innings: 1 | 2 | 3 | 4;
   batsman: string;
   bowler: string;
   runs: number;
@@ -161,6 +161,12 @@ export const useScoringStore = create<ScoringState>((set, get) => ({
         if (s.recentBalls.some((b) => b._id && b._id === data.ball._id)) return {};
         return { recentBalls: [data.ball, ...s.recentBalls].slice(0, 12) };
       });
+    }
+    if (data.removedBallId) {
+      set((s) => ({
+        recentBalls: s.recentBalls.filter((b) => b._id !== data.removedBallId),
+        allBalls: s.allBalls.filter((b) => b._id !== data.removedBallId),
+      }));
     }
   },
 

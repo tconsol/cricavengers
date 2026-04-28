@@ -30,7 +30,7 @@ const ballSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
-  innings: { type: Number, enum: [1, 2], required: true },
+  innings: { type: Number, enum: [1, 2, 3, 4], required: true },
   over: { type: Number, required: true, min: 0 },
   ball: { type: Number, required: true, min: 1 },
 

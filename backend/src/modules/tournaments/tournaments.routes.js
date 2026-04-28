@@ -1,6 +1,7 @@
 const express = require('express');
 const controller = require('./tournaments.controller');
 const { authenticate } = require('../../middlewares/auth');
+const { uploadTournamentLogo } = require('../../middlewares/upload');
 
 const router = express.Router();
 
@@ -21,6 +22,9 @@ router.post('/:id/register',                          controller.registerTeam);
 router.post('/:id/requests/:requestId/approve',       controller.approveRequest);
 router.post('/:id/requests/:requestId/reject',        controller.rejectRequest);
 router.delete('/:id/teams/:teamId',                   controller.removeTeam);
+
+// Logo
+router.post('/:id/logo', uploadTournamentLogo, controller.uploadTournamentLogo);
 
 // Fixtures
 router.post('/:id/fixtures',   controller.generateFixtures);

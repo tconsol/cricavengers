@@ -89,6 +89,7 @@ const tournamentSchema = new mongoose.Schema({
   prizePool: { type: String, default: '' },
   rules:     { type: String, default: '' },
 
+  logo: { type: String, default: null },
   isPublic: { type: Boolean, default: true },
 }, {
   timestamps: true,

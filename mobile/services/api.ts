@@ -5,10 +5,11 @@ type Method = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
 interface RequestOptions {
   method?: Method;
-  body?: Record<string, unknown> | null;
+  body?: Record<string, unknown> | FormData | null;
   params?: Record<string, string | number | boolean>;
   headers?: Record<string, string>;
   skipAuth?: boolean;
+  isFormData?: boolean;
 }
 
 class APIError extends Error {
@@ -31,7 +32,7 @@ const processQueue = (error: unknown, token: string | null) => {
 };
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, params, headers = {}, skipAuth = false } = options;
+  const { method = 'GET', body, params, headers = {}, skipAuth = false, isFormData = false } = options;
 
   let url = `${API_BASE_URL}${endpoint}`;
   if (params) {
@@ -43,10 +44,12 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   const accessToken = tokenStorage.getAccessToken();
 
-  const requestHeaders: Record<string, string> = {
+  const requestHeaders: Record<string, string> = isFormData ? {} : {
     'Content-Type': 'application/json',
     ...headers,
   };
+
+  if (!isFormData) Object.assign(requestHeaders, headers);
 
   if (!skipAuth && accessToken) {
     requestHeaders['Authorization'] = `Bearer ${accessToken}`;
@@ -55,7 +58,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const response = await fetch(url, {
     method,
     headers: requestHeaders,
-    body: body ? JSON.stringify(body) : undefined,
+    body: isFormData ? (body as FormData) : (body ? JSON.stringify(body) : undefined),
   });
 
   const data = await response.json();
@@ -128,6 +131,8 @@ export const api = {
             request<T>(endpoint, { method: 'PATCH', body }),
   postNoAuth: <T>(endpoint: string, body: Record<string, unknown>) =>
             request<T>(endpoint, { method: 'POST', body, skipAuth: true }),
+  upload: <T>(endpoint: string, formData: FormData) =>
+            request<T>(endpoint, { method: 'POST', body: formData as any, isFormData: true }),
 };
 
 export { APIError };

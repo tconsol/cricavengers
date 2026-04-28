@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  TextInput, RefreshControl,
+  TextInput, RefreshControl, Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -46,13 +46,18 @@ function TournamentCard({ item, onPress }: { item: any; onPress: () => void }) {
       activeOpacity={0.8}
     >
       <View className="flex-row items-start justify-between mb-2">
-        <View className="flex-1 mr-2">
-          <Text className="text-base font-bold text-gray-800" numberOfLines={1}>
-            {FORMAT_ICONS[item.format] || '🏏'} {item.name}
-          </Text>
-          {item.venue ? (
-            <Text className="text-xs text-gray-400 mt-0.5">{item.venue}</Text>
-          ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+          {item.logo ? (
+            <Image source={{ uri: item.logo }} style={{ width: 36, height: 36, borderRadius: 8, marginRight: 10 }} resizeMode="cover" />
+          ) : (
+            <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+              <Text style={{ fontSize: 18 }}>{FORMAT_ICONS[item.format] || '🏏'}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text className="text-base font-bold text-gray-800" numberOfLines={1}>{item.name}</Text>
+            {item.venue ? <Text className="text-xs text-gray-400 mt-0.5">{item.venue}</Text> : null}
+          </View>
         </View>
         <View
           className="px-2 py-1 rounded-full"

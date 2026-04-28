@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
-  Alert, TextInput, Modal, ScrollView, RefreshControl,
+  Alert, TextInput, Modal, ScrollView, RefreshControl, Image,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useTeamStore } from '@store/teamStore';
 import { useAuthStore } from '@store/authStore';
 import { api } from '@services/api';
@@ -232,12 +233,48 @@ export default function TeamDetailScreen() {
   const { user } = useAuthStore();
   const { currentTeam, fetchTeam, isLoading, addPlayer, removePlayer } = useTeamStore();
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const load = useCallback(() => { fetchTeam(id!); }, [id]);
   useEffect(() => { load(); }, [id]);
 
   const isOwner = currentTeam?.createdBy?._id === user?._id
     || currentTeam?.createdBy === user?._id;
+  const isCaptain = currentTeam?.players?.some(
+    (p: any) => p.userId?.toString() === user?._id && p.isCaptain
+  );
+  const canEdit = isOwner || isCaptain;
+
+  const handleLogoUpload = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow photo library access.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const form = new FormData();
+    form.append('logo', {
+      uri: asset.uri,
+      type: asset.mimeType || 'image/jpeg',
+      name: asset.fileName || 'logo.jpg',
+    } as any);
+    setUploadingLogo(true);
+    try {
+      await api.upload(`/teams/${id}/logo`, form);
+      load();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleAdd = async (playerData: Record<string, unknown>) => {
     await addPlayer(id!, playerData);
@@ -286,7 +323,7 @@ export default function TeamDetailScreen() {
         <Text className="text-white text-xl font-bold ml-3 flex-1" numberOfLines={1}>
           {currentTeam.name}
         </Text>
-        {isOwner && (
+        {canEdit && (
           <TouchableOpacity
             className="bg-accent rounded-full px-3 py-1.5 flex-row items-center gap-1"
             onPress={() => setAddModalVisible(true)}
@@ -299,12 +336,27 @@ export default function TeamDetailScreen() {
 
       {/* Team Banner */}
       <View className="items-center pb-6">
-        <View
-          className="w-20 h-20 rounded-full items-center justify-center mb-2"
-          style={{ backgroundColor: currentTeam.color }}
-        >
-          <Text className="text-white text-2xl font-black">{currentTeam.shortName}</Text>
-        </View>
+        <TouchableOpacity onPress={canEdit ? handleLogoUpload : undefined} activeOpacity={canEdit ? 0.8 : 1} style={{ position: 'relative', marginBottom: 8 }}>
+          {currentTeam.logo ? (
+            <Image
+              source={{ uri: currentTeam.logo }}
+              style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#F59E0B' }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: currentTeam.color, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)' }}>
+              <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900' }}>{currentTeam.shortName}</Text>
+            </View>
+          )}
+          {canEdit && (
+            <View style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: '#1E3A5F', borderRadius: 12, padding: 4, borderWidth: 2, borderColor: '#fff' }}>
+              {uploadingLogo
+                ? <ActivityIndicator size="small" color="#F59E0B" style={{ width: 14, height: 14 }} />
+                : <Ionicons name="camera" size={13} color="#F59E0B" />
+              }
+            </View>
+          )}
+        </TouchableOpacity>
         <Text className="text-white text-lg font-bold">{currentTeam.name}</Text>
         <View className="flex-row gap-3 mt-1">
           {captain && (
@@ -350,7 +402,7 @@ export default function TeamDetailScreen() {
                 {ROLE_ICONS[player.role as Role] || ''} {player.role?.replace('-', ' ')}
               </Text>
             </View>
-            {isOwner && (
+            {canEdit && (
               <TouchableOpacity
                 className="p-2"
                 onPress={() => handleRemove(player._id, player.name)}

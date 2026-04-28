@@ -1,8 +1,10 @@
 const rateLimit = require('express-rate-limit');
 
+const isDev = process.env.NODE_ENV === 'development';
+
 const rateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -10,19 +12,17 @@ const rateLimiter = rateLimit({
     code: 'RATE_LIMIT_EXCEEDED',
     message: 'Too many requests, please try again later',
   },
-  // Skip rate limiting in development
-  skip: (req) => req.path === '/health' || process.env.NODE_ENV === 'development',
+  skip: (req) => req.path === '/health',
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: isDev ? 100 : 10,
   message: {
     success: false,
     code: 'RATE_LIMIT_EXCEEDED',
     message: 'Too many auth attempts, please try again in 15 minutes',
   },
-  skip: () => process.env.NODE_ENV === 'development',
 });
 
 const scoringLimiter = rateLimit({

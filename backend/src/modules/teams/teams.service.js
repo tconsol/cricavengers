@@ -31,12 +31,29 @@ const getTeamById = async (id) => {
   return team;
 };
 
+const isCaptainOrOwner = (team, userId) => {
+  if (team.createdBy.toString() === userId) return true;
+  return team.players.some((p) => p.userId.toString() === userId && p.isCaptain);
+};
+
 const updateTeam = async (id, data, userId) => {
   const team = await Team.findById(id);
   if (!team) throw new AppError('Team not found', 404, 'NOT_FOUND');
-  if (team.createdBy.toString() !== userId) throw new AppError('Not authorized', 403, 'FORBIDDEN');
+  if (!isCaptainOrOwner(team, userId)) throw new AppError('Not authorized', 403, 'FORBIDDEN');
 
-  Object.assign(team, data);
+  const allowed = ['name', 'shortName', 'color', 'players'];
+  allowed.forEach((k) => { if (data[k] !== undefined) team[k] = data[k]; });
+  await team.save();
+  emitToAll('TEAM_UPDATED', { team });
+  return team;
+};
+
+const updateTeamLogo = async (id, logoUrl, userId) => {
+  const team = await Team.findById(id);
+  if (!team) throw new AppError('Team not found', 404, 'NOT_FOUND');
+  if (!isCaptainOrOwner(team, userId)) throw new AppError('Not authorized', 403, 'FORBIDDEN');
+
+  team.logo = logoUrl;
   await team.save();
   emitToAll('TEAM_UPDATED', { team });
   return team;
@@ -89,4 +106,4 @@ const searchPlayers = async (query) => {
   return players;
 };
 
-module.exports = { createTeam, getTeams, getTeamById, updateTeam, addPlayer, removePlayer, deleteTeam, searchPlayers };
+module.exports = { createTeam, getTeams, getTeamById, updateTeam, updateTeamLogo, addPlayer, removePlayer, deleteTeam, searchPlayers };

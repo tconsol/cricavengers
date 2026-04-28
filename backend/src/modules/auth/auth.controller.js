@@ -1,5 +1,6 @@
 const authService = require('./auth.service');
 const { success } = require('../../utils/response');
+const { fileUrl } = require('../../middlewares/upload');
 
 const register = async (req, res, next) => {
   try {
@@ -35,4 +36,34 @@ const me = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { register, login, refresh, logout, me };
+const updateProfile = async (req, res, next) => {
+  try {
+    const user = await authService.updateProfile(req.userId, req.body);
+    success(res, { user }, 'Profile updated');
+  } catch (err) { next(err); }
+};
+
+const changePassword = async (req, res, next) => {
+  try {
+    await authService.changePassword(req.userId, req.body);
+    success(res, {}, 'Password changed');
+  } catch (err) { next(err); }
+};
+
+const uploadAvatar = async (req, res, next) => {
+  try {
+    if (!req.file) return next(new (require('../../middlewares/errorHandler').AppError)('No file uploaded', 400, 'NO_FILE'));
+    const url = fileUrl(req, 'avatars', req.file.filename);
+    const user = await authService.updateAvatar(req.userId, url);
+    success(res, { user }, 'Avatar updated');
+  } catch (err) { next(err); }
+};
+
+const saveFcmToken = async (req, res, next) => {
+  try {
+    await authService.saveFcmToken(req.userId, req.body.fcmToken);
+    success(res, {}, 'FCM token saved');
+  } catch (err) { next(err); }
+};
+
+module.exports = { register, login, refresh, logout, me, updateProfile, changePassword, uploadAvatar, saveFcmToken };

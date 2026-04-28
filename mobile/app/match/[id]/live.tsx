@@ -1,7 +1,7 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, Pressable,
+  View, Text, ScrollView, TouchableOpacity, Alert,
+  ActivityIndicator, Dimensions, Modal, Pressable, Image,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -54,6 +54,8 @@ const STATE_LABEL: Record<string, string> = {
   NOT_STARTED: 'Upcoming', TOSS_DONE: 'Ready to Start',
   FIRST_INNINGS: 'Live', INNINGS_BREAK: 'Innings Break',
   SECOND_INNINGS: 'Live', COMPLETED: 'Completed',
+  SUPER_OVER_BREAK: 'Super Over Offered', SUPER_OVER_1: 'Super Over Live',
+  SUPER_OVER_INNINGS_BREAK: 'Super Over Innings Break', SUPER_OVER_2: 'Super Over Live',
 };
 
 const ORDINALS = ['1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'];
@@ -284,11 +286,42 @@ function BowlerCardModal({ bowler, onClose }: { bowler: any; onClose: () => void
 
 // ─── LiveTab ──────────────────────────────────────────────────
 
-function LiveTab({ match, summary, recentBalls }: { match: any; summary: any; recentBalls: any[] }) {
+type PlayerEntry = { id: string; text: string; type: 'batsman' | 'bowler' };
+
+function LiveTab({ match, summary, recentBalls, playerCommentary }: { match: any; summary: any; recentBalls: any[]; playerCommentary: PlayerEntry[] }) {
   const cs = summary?.currentState;
   const inningsNum = cs?.innings ?? 1;
   const inningsSummary = summary?.innings?.[inningsNum - 1];
   const isCompleted = match?.state === 'COMPLETED';
+  const { fetchAllBalls, allBalls } = useScoringStore();
+
+  // Fetch all balls for all-overs display, refresh when summary updates
+  useEffect(() => {
+    if (match?._id && inningsNum && !isCompleted) {
+      fetchAllBalls(match._id, inningsNum);
+    }
+  }, [match?._id, inningsNum, summary?.computedAt]);
+
+  // Build per-over data from allBalls (client-side)
+  const perOverData = (() => {
+    if (!allBalls.length) return [];
+    const overMap = new Map<number, { balls: string[]; runs: number; wickets: number }>();
+    for (const ball of allBalls) {
+      if (!overMap.has(ball.over)) overMap.set(ball.over, { balls: [], runs: 0, wickets: 0 });
+      const ov = overMap.get(ball.over)!;
+      let label: string;
+      if (ball.wicket) label = 'W';
+      else if (ball.extras?.type === 'wide') label = 'Wd';
+      else if (ball.extras?.type === 'no_ball') label = 'Nb';
+      else label = String(ball.runs ?? 0);
+      ov.balls.push(label);
+      ov.runs += (ball.runs ?? 0) + (ball.extras?.runs ?? 0);
+      if (ball.wicket) ov.wickets++;
+    }
+    return [...overMap.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([over, data]) => ({ over, ...data }));
+  })();
 
   if (!cs || (!cs.totalRuns && !isCompleted)) {
     const isNotStarted = ['NOT_STARTED', 'TOSS_DONE'].includes(match?.state);
@@ -298,23 +331,34 @@ function LiveTab({ match, summary, recentBalls }: { match: any; summary: any; re
           <View style={{ backgroundColor: 'rgba(93,194,253,0.15)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 16 }}>
             <Text style={{ color: '#93C5FD', fontSize: 11, fontWeight: '700' }}>{STATE_LABEL[match?.state] || match?.state}</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 16, width: '100%' }}>
-            {[match?.teamA, match?.teamB].map((team: any, ti: number) => (
-              ti === 1 ? (
-                <View key="vs" style={{ alignItems: 'center' }}>
-                  <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 20 }}>VS</Text>
-                  {match?.totalOvers && <Text style={{ color: '#93C5FD', fontSize: 11, marginTop: 4 }}>{match.totalOvers} ov</Text>}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, width: '100%' }}>
+            {/* Team A */}
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              {match?.teamA?.logo ? (
+                <Image source={{ uri: match.teamA.logo }} style={{ width: 60, height: 60, borderRadius: 30, marginBottom: 8 }} resizeMode="cover" />
+              ) : (
+                <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: (match?.teamA?.color || '#1E3A5F') + '30', borderWidth: 2, borderColor: (match?.teamA?.color || '#93C5FD') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontWeight: '900', fontSize: 16, color: match?.teamA?.color || '#fff' }}>{match?.teamA?.shortName}</Text>
                 </View>
-              ) : null
-            ))}
-            {[match?.teamA, match?.teamB].map((team: any, ti: number) => (
-              <View key={ti} style={{ flex: 1, alignItems: 'center' }}>
-                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: (team?.color || '#1E3A5F') + '30', borderWidth: 2, borderColor: (team?.color || '#93C5FD') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontWeight: '900', fontSize: 14, color: team?.color || '#fff' }}>{team?.shortName}</Text>
+              )}
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' }} numberOfLines={2}>{match?.teamA?.name}</Text>
+            </View>
+            {/* VS center */}
+            <View style={{ alignItems: 'center', paddingHorizontal: 16 }}>
+              <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 22 }}>VS</Text>
+              {match?.totalOvers ? <Text style={{ color: '#93C5FD', fontSize: 11, marginTop: 4 }}>{match.totalOvers} ov</Text> : null}
+            </View>
+            {/* Team B */}
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              {match?.teamB?.logo ? (
+                <Image source={{ uri: match.teamB.logo }} style={{ width: 60, height: 60, borderRadius: 30, marginBottom: 8 }} resizeMode="cover" />
+              ) : (
+                <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: (match?.teamB?.color || '#7C3AED') + '30', borderWidth: 2, borderColor: (match?.teamB?.color || '#7C3AED') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontWeight: '900', fontSize: 16, color: match?.teamB?.color || '#fff' }}>{match?.teamB?.shortName}</Text>
                 </View>
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' }} numberOfLines={2}>{team?.name}</Text>
-              </View>
-            ))}
+              )}
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' }} numberOfLines={2}>{match?.teamB?.name}</Text>
+            </View>
           </View>
           {match?.toss?.winner && (
             <View style={{ backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
@@ -341,8 +385,17 @@ function LiveTab({ match, summary, recentBalls }: { match: any; summary: any; re
     ? match?.innings?.first?.battingTeam?.name
     : match?.innings?.second?.battingTeam?.name;
 
-  const thisOverBalls = recentBalls.filter((b) => b.over === cs.over);
-  const displayBalls = thisOverBalls.length > 0 ? thisOverBalls : recentBalls.slice(0, 6);
+  // Deduplicate recentBalls by _id then build this-over (oldest→newest so latest is on right)
+  const seen = new Set<string>();
+  const deduped = recentBalls.filter((b) => {
+    if (!b._id) return true;
+    if (seen.has(b._id)) return false;
+    seen.add(b._id); return true;
+  });
+  const thisOverBalls = deduped
+    .filter((b) => b.over === cs.over)
+    .sort((a, b) => a.ball - b.ball);
+  const displayBalls = thisOverBalls.length > 0 ? thisOverBalls : [...deduped.slice(0, 6)].reverse();
 
   const strikerId = (cs.striker?._id || cs.striker)?.toString();
   const nonStrikerId = (cs.nonStriker?._id || cs.nonStriker)?.toString();
@@ -403,20 +456,38 @@ function LiveTab({ match, summary, recentBalls }: { match: any; summary: any; re
         )}
       </View>
 
-      {/* This over */}
+      {/* This over — latest ball on the RIGHT */}
       {displayBalls.length > 0 && !isCompleted && (
-        <View style={{ backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 12, marginTop: 6 }}>
-          <Text style={{ fontWeight: '700', color: '#9CA3AF', fontSize: 10, letterSpacing: 0.5, marginBottom: 10 }}>THIS OVER</Text>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            {displayBalls.map((ball, i) => {
-              const s = getBallStyle(ball);
-              return (
-                <View key={ball._id || i} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: s.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5E7EB' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: s.color }}>{s.label}</Text>
+        <View style={{ backgroundColor: '#fff', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, marginTop: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontWeight: '700', color: '#9CA3AF', fontSize: 10, letterSpacing: 0.5, marginRight: 8 }}>OV {cs.over + 1}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 7 }}>
+              {displayBalls.map((ball) => {
+                const s = getBallStyle(ball);
+                return (
+                  <View key={ball._id || `${ball.over}-${ball.ball}`} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: s.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5E7EB' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: s.color }}>{s.label}</Text>
+                  </View>
+                );
+              })}
+              {/* Empty circles: only count legal deliveries */}
+              {Array.from({ length: Math.max(0, 6 - thisOverBalls.filter((b: any) => b.extras?.type !== 'wide' && b.extras?.type !== 'no_ball').length) }).map((_, i) => (
+                <View key={`empty-${i}`} style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1.5, borderColor: '#E5E7EB', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#D1D5DB' }}>·</Text>
                 </View>
-              );
-            })}
+              ))}
+            </ScrollView>
           </View>
+        </View>
+      )}
+
+      {/* All overs — horizontal scroll, no scrollbar */}
+      {perOverData.length > 0 && !isCompleted && (
+        <View style={{ backgroundColor: '#fff', marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 }}>
+            <Text style={{ fontWeight: '700', color: '#9CA3AF', fontSize: 10, letterSpacing: 0.5 }}>ALL OVERS</Text>
+          </View>
+          <OverScroller perOverData={perOverData} />
         </View>
       )}
 
@@ -472,28 +543,68 @@ function LiveTab({ match, summary, recentBalls }: { match: any; summary: any; re
       )}
 
       {/* Commentary */}
-      {recentBalls.length > 0 && (
+      {(recentBalls.length > 0 || playerCommentary.length > 0) && (
         <View style={{ backgroundColor: '#fff', marginTop: 6, paddingBottom: 8 }}>
           <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
             <Text style={{ fontWeight: '700', color: '#9CA3AF', fontSize: 10, letterSpacing: 0.5 }}>COMMENTARY</Text>
           </View>
-          {[...recentBalls].slice(0, 20).map((ball, i) => {
-            const s = getBallStyle(ball);
-            let cText = '';
-            try { cText = generateCommentary(ball, ball.batsman?.name || 'Batsman', ball.bowler?.name || 'Bowler'); }
-            catch { cText = `${ball.bowler?.name || 'Bowler'} to ${ball.batsman?.name || 'Batsman'}, ${ball.runs ?? 0}`; }
-            return (
-              <View key={ball._id || i} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F9FAFB' }}>
-                <Text style={{ color: '#9CA3AF', fontSize: 11, width: 38, paddingTop: 2 }}>
-                  {ball.over != null ? `${ball.over}.${ball.ball}` : ''}
-                </Text>
-                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: s.bg, alignItems: 'center', justifyContent: 'center', marginRight: 10, marginTop: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: s.color }}>{s.label}</Text>
-                </View>
-                <Text style={{ color: '#374151', fontSize: 13, lineHeight: 19, flex: 1 }} numberOfLines={3}>{cText}</Text>
+          {playerCommentary.map((entry) => (
+            <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F9FAFB', backgroundColor: entry.type === 'batsman' ? '#FFFBEB' : '#F0FDF4' }}>
+              <Text style={{ color: '#9CA3AF', fontSize: 11, width: 38 }} />
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: entry.type === 'batsman' ? '#FEF3C7' : '#DCFCE7', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <Text style={{ fontSize: 16 }}>{entry.type === 'batsman' ? '🏏' : '🎳'}</Text>
               </View>
-            );
-          })}
+              <Text style={{ color: entry.type === 'batsman' ? '#92400E' : '#15803D', fontSize: 13, fontWeight: '700', flex: 1 }}>{entry.text}</Text>
+            </View>
+          ))}
+          {(() => {
+            // Sort all deduped balls chronologically
+            const sorted = [...deduped].sort((a, b) => a.over - b.over || a.ball - b.ball);
+            // Compute legal-delivery-count label for each ball
+            const legalLabel = new Map<string, string>();
+            let curOver = -1;
+            let legalCnt = 0;
+            for (const b of sorted) {
+              if (b.over !== curOver) { curOver = b.over; legalCnt = 0; }
+              const isLegal = b.extras?.type !== 'wide' && b.extras?.type !== 'no_ball';
+              if (isLegal) legalCnt++;
+              // Legal ball → its slot; Wide/NB → the upcoming slot (legalCnt+1) it "borrows"
+              legalLabel.set(b._id || `${b.over}-${b.ball}`, `${b.over}.${isLegal ? legalCnt : legalCnt + 1}`);
+            }
+            // Group by over, newest first
+            const overMap = new Map<number, any[]>();
+            for (const b of sorted) {
+              if (!overMap.has(b.over)) overMap.set(b.over, []);
+              overMap.get(b.over)!.push(b);
+            }
+            const overGroups = [...overMap.entries()].sort(([a], [b]) => b - a);
+            return overGroups.flatMap(([overNum, balls], gIdx) => {
+              const rows = [...balls].reverse().map((ball) => {
+                const s = getBallStyle(ball);
+                const key = ball._id || `${ball.over}-${ball.ball}`;
+                let cText = '';
+                try { cText = generateCommentary(ball, ball.batsman?.name || 'Batsman', ball.bowler?.name || 'Bowler'); }
+                catch { cText = `${ball.bowler?.name || 'Bowler'} to ${ball.batsman?.name || 'Batsman'}, ${ball.runs ?? 0}`; }
+                return (
+                  <View key={key} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F9FAFB' }}>
+                    <Text style={{ color: '#9CA3AF', fontSize: 11, width: 38, paddingTop: 2 }}>{legalLabel.get(key) || ''}</Text>
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: s.bg, alignItems: 'center', justifyContent: 'center', marginRight: 10, marginTop: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: s.color }}>{s.label}</Text>
+                    </View>
+                    <Text style={{ color: '#374151', fontSize: 13, lineHeight: 19, flex: 1 }} numberOfLines={3}>{cText}</Text>
+                  </View>
+                );
+              });
+              const sep = (
+                <View key={`sep-${overNum}`} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#F3F4F6' }}>
+                  <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+                  <Text style={{ color: '#6B7280', fontSize: 10, fontWeight: '800', paddingHorizontal: 10 }}>| OVER {overNum + 1} |</Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+                </View>
+              );
+              return [sep, ...rows];
+            });
+          })()}
         </View>
       )}
       <View style={{ height: 100 }} />
@@ -1568,7 +1679,11 @@ function GraphsTab({ matchId, match }: { matchId: string; match: any }) {
 
 // ─── InfoTab ──────────────────────────────────────────────────
 
-function InfoTab({ match }: { match: any }) {
+function InfoTab({ match, matchId }: { match: any; matchId: string }) {
+  const { user } = useAuthStore();
+  const { fetchMatch } = useMatchStore();
+  const [revoking, setRevoking] = useState<string | null>(null);
+
   const fmtDate = (d: string) =>
     d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
@@ -1585,24 +1700,55 @@ function InfoTab({ match }: { match: any }) {
     { label: 'Result', value: match?.result?.description || '—' },
   ];
 
+  const isOrganizer = (match?.createdBy?._id || match?.createdBy)?.toString() === user?._id?.toString();
+  const scorers: any[] = (match?.roles || []).filter((r: any) => r.role === 'scorer');
+
+  const handleRevoke = (targetId: string, name: string) => {
+    Alert.alert('Revoke Scoring Access', `Remove scorer access for ${name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Revoke', style: 'destructive',
+        onPress: async () => {
+          setRevoking(targetId);
+          try {
+            await api.delete(`/matches/${matchId}/roles/${targetId}`);
+            await fetchMatch(matchId);
+          } catch (err: any) {
+            Alert.alert('Error', err?.message || 'Failed to revoke access');
+          } finally {
+            setRevoking(null);
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
       <View style={{ backgroundColor: '#1E3A5F', paddingHorizontal: 16, paddingVertical: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: (match?.teamA?.color || '#1E3A5F') + '30', borderWidth: 2, borderColor: (match?.teamA?.color || '#93C5FD') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-              <Text style={{ fontWeight: '900', fontSize: 14, color: match?.teamA?.color || '#fff' }}>{match?.teamA?.shortName}</Text>
-            </View>
+            {match?.teamA?.logo ? (
+              <Image source={{ uri: match.teamA.logo }} style={{ width: 60, height: 60, borderRadius: 30, marginBottom: 8 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: (match?.teamA?.color || '#1E3A5F') + '30', borderWidth: 2, borderColor: (match?.teamA?.color || '#93C5FD') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                <Text style={{ fontWeight: '900', fontSize: 16, color: match?.teamA?.color || '#fff' }}>{match?.teamA?.shortName}</Text>
+              </View>
+            )}
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13, textAlign: 'center' }} numberOfLines={2}>{match?.teamA?.name}</Text>
           </View>
-          <View style={{ alignItems: 'center', paddingHorizontal: 12 }}>
-            <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 20 }}>VS</Text>
+          <View style={{ alignItems: 'center', paddingHorizontal: 16 }}>
+            <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 22 }}>VS</Text>
             {match?.totalOvers ? <Text style={{ color: '#93C5FD', fontSize: 11, marginTop: 4 }}>{match.totalOvers} ov</Text> : null}
           </View>
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: (match?.teamB?.color || '#7C3AED') + '30', borderWidth: 2, borderColor: (match?.teamB?.color || '#7C3AED') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-              <Text style={{ fontWeight: '900', fontSize: 14, color: match?.teamB?.color || '#fff' }}>{match?.teamB?.shortName}</Text>
-            </View>
+            {match?.teamB?.logo ? (
+              <Image source={{ uri: match.teamB.logo }} style={{ width: 60, height: 60, borderRadius: 30, marginBottom: 8 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: (match?.teamB?.color || '#7C3AED') + '30', borderWidth: 2, borderColor: (match?.teamB?.color || '#7C3AED') + '60', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                <Text style={{ fontWeight: '900', fontSize: 16, color: match?.teamB?.color || '#fff' }}>{match?.teamB?.shortName}</Text>
+              </View>
+            )}
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13, textAlign: 'center' }} numberOfLines={2}>{match?.teamB?.name}</Text>
           </View>
         </View>
@@ -1624,67 +1770,241 @@ function InfoTab({ match }: { match: any }) {
           </View>
         ))}
       </View>
+
+      {/* Scoring Access — visible to organizer when scorers are assigned */}
+      {isOrganizer && scorers.length > 0 && (
+        <View style={{ backgroundColor: '#fff', marginTop: 12, marginBottom: 12 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <Text style={{ fontWeight: '800', color: '#111827', fontSize: 14 }}>Scoring Access</Text>
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginTop: 2 }}>Players with scorer permission for this match</Text>
+          </View>
+          {scorers.map((r: any) => {
+            const uid = (r.userId?._id || r.userId)?.toString();
+            const name = r.userId?.name || 'Unknown';
+            return (
+              <View key={uid} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F9FAFB' }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                  <Text style={{ fontWeight: '900', color: '#2563EB', fontSize: 12 }}>{name.slice(0, 2).toUpperCase()}</Text>
+                </View>
+                <Text style={{ flex: 1, fontWeight: '600', color: '#111827', fontSize: 13 }}>{name}</Text>
+                <TouchableOpacity
+                  onPress={() => handleRevoke(uid, name)}
+                  disabled={revoking === uid}
+                  style={{ backgroundColor: '#FEE2E2', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
+                >
+                  {revoking === uid ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 12 }}>Revoke</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 // ─── SquadsTab ────────────────────────────────────────────────
 
-function SquadsTab({ match }: { match: any }) {
+function SquadPicker({ team, currentSquad, matchId, onSave, onClose }: {
+  team: any; currentSquad: any[]; matchId: string; onSave: () => void; onClose: () => void;
+}) {
+  const currentIds = new Set(currentSquad.map((p: any) => (p.userId?._id || p.userId)?.toString()));
+  const [selected, setSelected] = useState<Set<string>>(new Set(currentIds));
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (pid: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(pid)) { next.delete(pid); } else { next.add(pid); }
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const squad = (team.players || [])
+        .filter((p: any) => selected.has((p.userId?._id || p.userId)?.toString()))
+        .map((p: any) => ({
+          userId: (p.userId?._id || p.userId)?.toString(),
+          name: p.name,
+          role: p.role,
+          jerseyNumber: p.jerseyNumber ?? null,
+        }));
+      await api.put(`/matches/${matchId}/squad`, { teamId: team._id?.toString(), squad });
+      onSave();
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to save squad');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 32, paddingTop: 16, maxHeight: '85%' }}>
+          <View style={{ alignItems: 'center', marginBottom: 12 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB' }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>Select Squad</Text>
+              <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{team?.name} · {selected.size} selected</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+              <Ionicons name="close" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            {(team.players || []).map((p: any) => {
+              const pid = (p.userId?._id || p.userId)?.toString();
+              const isSelected = selected.has(pid);
+              return (
+                <TouchableOpacity
+                  key={pid}
+                  onPress={() => toggle(pid)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', paddingVertical: 12,
+                    borderBottomWidth: 1, borderBottomColor: '#F9FAFB',
+                  }}
+                >
+                  <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: isSelected ? '#1E3A5F' : '#D1D5DB', backgroundColor: isSelected ? '#1E3A5F' : '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                    {isSelected && <Ionicons name="checkmark" size={13} color="#fff" />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={{ fontWeight: '600', color: '#111827', fontSize: 13 }}>{p.name}</Text>
+                      {p.isCaptain && <View style={{ backgroundColor: '#FEF3C7', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#92400E', fontSize: 9, fontWeight: '800' }}>C</Text></View>}
+                      {p.isViceCaptain && <View style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#1D4ED8', fontSize: 9, fontWeight: '800' }}>VC</Text></View>}
+                    </View>
+                    <Text style={{ color: '#9CA3AF', fontSize: 11 }}>{p.role?.replace(/-/g, ' ')}</Text>
+                  </View>
+                  {p.jerseyNumber != null && (
+                    <Text style={{ color: '#9CA3AF', fontSize: 12, fontWeight: '700' }}>#{p.jerseyNumber}</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={saving}
+            style={{ marginTop: 16, paddingVertical: 14, borderRadius: 18, alignItems: 'center', backgroundColor: saving ? '#E5E7EB' : '#1E3A5F' }}
+          >
+            {saving ? <ActivityIndicator color="#fff" /> : (
+              <Text style={{ fontWeight: '800', fontSize: 15, color: '#fff' }}>Save Squad ({selected.size})</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SquadsTab({ match, matchId }: { match: any; matchId: string }) {
+  const { user } = useAuthStore();
+  const { fetchMatch } = useMatchStore();
+  const [squadPickerTeam, setSquadPickerTeam] = useState<any>(null);
+
   const teamA = match?.teamA;
   const teamB = match?.teamB;
-  const aPlayers: any[] = teamA?.players || [];
-  const bPlayers: any[] = teamB?.players || [];
-  const maxLen = Math.max(aPlayers.length, bPlayers.length);
+  const userId = user?._id?.toString();
+
+  const isCaptainOf = (team: any) =>
+    (team?.players || []).some(
+      (p: any) => (p.userId?._id || p.userId)?.toString() === userId && p.isCaptain,
+    );
+  const isOrganizer = (match?.createdBy?._id || match?.createdBy)?.toString() === userId;
+
+  const getSquad = (team: any) => {
+    if (!team) return [];
+    const isA = team._id?.toString() === teamA?._id?.toString();
+    const sq: any[] = isA ? (match?.squadA || []) : (match?.squadB || []);
+    return sq.length > 0 ? sq : (team.players || []);
+  };
+
+  const renderTeamColumn = (team: any, align: 'left' | 'right') => {
+    const canEdit = isOrganizer || isCaptainOf(team);
+    const squad = getSquad(team);
+    return (
+      <View style={{ flex: 1 }}>
+        {canEdit && (
+          <TouchableOpacity
+            onPress={() => setSquadPickerTeam(team)}
+            style={{ margin: 8, backgroundColor: '#EFF6FF', borderRadius: 10, paddingVertical: 7, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 4 }}
+          >
+            <Ionicons name="pencil" size={13} color="#2563EB" />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB' }}>Edit Squad</Text>
+          </TouchableOpacity>
+        )}
+        {squad.map((p: any, i: number) => {
+          const pid = (p.userId?._id || p.userId);
+          return (
+            <TouchableOpacity
+              key={i}
+              onPress={() => pid && router.push(`/player/${pid}` as any)}
+              disabled={!pid}
+              activeOpacity={pid ? 0.6 : 1}
+              style={{ paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F9FAFB', alignItems: align === 'right' ? 'flex-end' : 'flex-start' }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {align === 'right' && p.isCaptain && <View style={{ backgroundColor: '#FEF3C7', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#92400E', fontSize: 9, fontWeight: '800' }}>C</Text></View>}
+                {align === 'right' && p.isViceCaptain && <View style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#1D4ED8', fontSize: 9, fontWeight: '800' }}>VC</Text></View>}
+                <Text style={{ fontWeight: '600', color: '#111827', fontSize: 13 }}>{p.name}</Text>
+                {align === 'left' && p.isCaptain && <View style={{ backgroundColor: '#FEF3C7', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#92400E', fontSize: 9, fontWeight: '800' }}>C</Text></View>}
+                {align === 'left' && p.isViceCaptain && <View style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#1D4ED8', fontSize: 9, fontWeight: '800' }}>VC</Text></View>}
+              </View>
+              <Text style={{ color: '#9CA3AF', fontSize: 11 }}>{p.role?.replace(/-/g, ' ')}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
       <View style={{ flexDirection: 'row', backgroundColor: '#1E3A5F' }}>
         {[teamA, teamB].map((team: any, i: number) => (
           <View key={i} style={{ flex: 1, flexDirection: i === 0 ? 'row' : 'row-reverse', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 14, gap: 8 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: (team?.color || '#1E3A5F') + '40', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontWeight: '900', fontSize: 11, color: team?.color || '#fff' }}>{team?.shortName || team?.name?.slice(0, 2)?.toUpperCase()}</Text>
-            </View>
+            {team?.logo ? (
+              <Image source={{ uri: team.logo }} style={{ width: 36, height: 36, borderRadius: 18 }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: (team?.color || '#1E3A5F') + '40', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontWeight: '900', fontSize: 11, color: team?.color || '#fff' }}>{team?.shortName || team?.name?.slice(0, 2)?.toUpperCase()}</Text>
+              </View>
+            )}
             <Text style={{ fontWeight: '700', color: '#fff', fontSize: 12, flex: 1, textAlign: i === 0 ? 'left' : 'right' }} numberOfLines={1}>{team?.name}</Text>
           </View>
         ))}
       </View>
-      <View style={{ height: 1, backgroundColor: '#F3F4F6' }} />
-      {Array.from({ length: maxLen }).map((_, i) => {
-        const pa = aPlayers[i];
-        const pb = bPlayers[i];
-        const paId = pa?.userId?._id || pa?.userId;
-        const pbId = pb?.userId?._id || pb?.userId;
-        return (
-          <View key={i} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F9FAFB' }}>
-            <TouchableOpacity style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12 }} onPress={() => paId && router.push(`/player/${paId}` as any)} disabled={!paId} activeOpacity={paId ? 0.6 : 1}>
-              {pa && (
-                <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={{ fontWeight: '600', color: '#111827', fontSize: 13 }}>{pa.name}</Text>
-                    {pa.isCaptain && <View style={{ backgroundColor: '#FEF3C7', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#92400E', fontSize: 9, fontWeight: '800' }}>C</Text></View>}
-                    {pa.isViceCaptain && <View style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#1D4ED8', fontSize: 9, fontWeight: '800' }}>VC</Text></View>}
-                  </View>
-                  <Text style={{ color: '#9CA3AF', fontSize: 11 }}>{pa.role?.replace(/-/g, ' ')}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <View style={{ width: 1, backgroundColor: '#F3F4F6' }} />
-            <TouchableOpacity style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'flex-end' }} onPress={() => pbId && router.push(`/player/${pbId}` as any)} disabled={!pbId} activeOpacity={pbId ? 0.6 : 1}>
-              {pb && (
-                <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                    {pb.isCaptain && <View style={{ backgroundColor: '#FEF3C7', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#92400E', fontSize: 9, fontWeight: '800' }}>C</Text></View>}
-                    {pb.isViceCaptain && <View style={{ backgroundColor: '#EFF6FF', borderRadius: 4, paddingHorizontal: 4 }}><Text style={{ color: '#1D4ED8', fontSize: 9, fontWeight: '800' }}>VC</Text></View>}
-                    <Text style={{ fontWeight: '600', color: '#111827', fontSize: 13 }}>{pb.name}</Text>
-                  </View>
-                  <Text style={{ color: '#9CA3AF', fontSize: 11 }}>{pb.role?.replace(/-/g, ' ')}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        );
-      })}
+      <View style={{ flexDirection: 'row' }}>
+        {renderTeamColumn(teamA, 'left')}
+        <View style={{ width: 1, backgroundColor: '#F3F4F6' }} />
+        {renderTeamColumn(teamB, 'right')}
+      </View>
+
+      {squadPickerTeam && (
+        <SquadPicker
+          team={squadPickerTeam}
+          currentSquad={
+            squadPickerTeam._id?.toString() === teamA?._id?.toString()
+              ? (match?.squadA || [])
+              : (match?.squadB || [])
+          }
+          matchId={matchId}
+          onSave={async () => {
+            setSquadPickerTeam(null);
+            await fetchMatch(matchId);
+          }}
+          onClose={() => setSquadPickerTeam(null)}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -1694,9 +2014,14 @@ function SquadsTab({ match }: { match: any }) {
 export default function LiveScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { currentMatch, fetchMatch } = useMatchStore();
+  const { currentMatch, fetchMatch, endMatchAsTie } = useMatchStore();
   const { summary, fetchSummary, fetchRecentBalls, setLiveUpdate, recentBalls, isLoading, reset } = useScoringStore();
   const [tab, setTab] = useState<Tab>('Live');
+  const [playerCommentary, setPlayerCommentary] = useState<PlayerEntry[]>([]);
+  const prevStrikerIdRef = useRef<string | null>(null);
+  const prevBowlerIdRef = useRef<string | null>(null);
+  const [showSuperOverBreak, setShowSuperOverBreak] = useState(false);
+  const [showSuperOverInningsBreak, setShowSuperOverInningsBreak] = useState(false);
 
   useEffect(() => {
     if (!currentMatch) return;
@@ -1715,15 +2040,82 @@ export default function LiveScreen() {
   }, [id]);
 
   useEffect(() => {
-    load();
+    load().then(() => {
+      // Initialise refs from loaded summary so first PLAYER_CHANGED can compare correctly
+      const cs = useScoringStore.getState().summary?.currentState;
+      if (cs) {
+        prevStrikerIdRef.current = (cs.striker?._id || cs.striker)?.toString() || null;
+        prevBowlerIdRef.current = (cs.currentBowler?._id || cs.currentBowler)?.toString() || null;
+      }
+    });
     joinMatch(id!);
-    const unsubBall = onMatchEvent('BALL_ADDED', (data) => setLiveUpdate(data as any));
-    const unsubUpdate = onMatchEvent('MATCH_UPDATED', (data) => setLiveUpdate(data as any));
-    return () => { unsubBall(); unsubUpdate(); leaveMatch(id!); };
+
+    const updateRefs = (cs: any) => {
+      if (!cs) return;
+      prevStrikerIdRef.current = (cs.striker?._id || cs.striker)?.toString() || null;
+      prevBowlerIdRef.current = (cs.currentBowler?._id || cs.currentBowler)?.toString() || null;
+    };
+
+    const unsubBall = onMatchEvent('BALL_ADDED', (data: any) => {
+      setLiveUpdate(data);
+      updateRefs(data.summary?.currentState);
+    });
+    const unsubUpdate = onMatchEvent('MATCH_UPDATED', (data: any) => {
+      setLiveUpdate(data);
+      updateRefs(data.summary?.currentState);
+    });
+    const unsubRemove = onMatchEvent('BALL_REMOVED', (data: any) => {
+      setLiveUpdate(data);
+      updateRefs(data.summary?.currentState);
+    });
+    const unsubPlayerChange = onMatchEvent('PLAYER_CHANGED', (data: any) => {
+      setLiveUpdate(data);
+      const cs = data.summary?.currentState;
+      if (!cs) return;
+
+      const newStrikerId = (cs.striker?._id || cs.striker)?.toString() || null;
+      const newBowlerId = (cs.currentBowler?._id || cs.currentBowler)?.toString() || null;
+      const entries: PlayerEntry[] = [];
+
+      if (newStrikerId && newStrikerId !== prevStrikerIdRef.current) {
+        const name = cs.striker?.name || 'New batsman';
+        entries.push({ id: `bat-${Date.now()}`, text: `${name} comes to the crease`, type: 'batsman' });
+      }
+      if (newBowlerId && newBowlerId !== prevBowlerIdRef.current) {
+        const name = cs.currentBowler?.name || 'New bowler';
+        entries.push({ id: `bowl-${Date.now()}`, text: `${name} will bowl the next over`, type: 'bowler' });
+      }
+
+      if (entries.length > 0) {
+        setPlayerCommentary((prev) => [...entries, ...prev].slice(0, 20));
+      }
+      updateRefs(cs);
+    });
+
+    const unsubState = onMatchEvent('MATCH_STATE_CHANGED', (data: any) => {
+      fetchMatch(id!);
+      fetchSummary(id!);
+      if (data?.state === 'SUPER_OVER_BREAK') setShowSuperOverBreak(true);
+      if (data?.state === 'SUPER_OVER_INNINGS_BREAK') {
+        setShowSuperOverBreak(false);
+        setShowSuperOverInningsBreak(true);
+      }
+      if (data?.state === 'COMPLETED') {
+        setShowSuperOverBreak(false);
+        setShowSuperOverInningsBreak(false);
+        setTab('Summary');
+      }
+    });
+
+    return () => { unsubBall(); unsubUpdate(); unsubRemove(); unsubPlayerChange(); unsubState(); leaveMatch(id!); };
   }, [id]);
 
   const match = currentMatch;
-  const isLive = ['FIRST_INNINGS', 'SECOND_INNINGS', 'INNINGS_BREAK'].includes(match?.state || '');
+  const SUPER_OVER_ACTIVE = ['SUPER_OVER_1', 'SUPER_OVER_2'];
+  const isLive = ['FIRST_INNINGS', 'SECOND_INNINGS', 'INNINGS_BREAK', ...SUPER_OVER_ACTIVE].includes(match?.state || '');
+  const isSuperOverBreak = match?.state === 'SUPER_OVER_BREAK';
+  const isSuperOverInningsBreak = match?.state === 'SUPER_OVER_INNINGS_BREAK';
+  const isSuperOverActive = SUPER_OVER_ACTIVE.includes(match?.state || '');
   const isNotStarted = match?.state === 'NOT_STARTED' || match?.state === 'TOSS_DONE';
   const isCompleted = match?.state === 'COMPLETED';
 
@@ -1784,12 +2176,12 @@ export default function LiveScreen() {
 
       {/* Tab content */}
       <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-        {tab === 'Live'      && <LiveTab match={match} summary={summary} recentBalls={recentBalls} />}
-        {tab === 'Info'      && <InfoTab match={match} />}
+        {tab === 'Live'      && <LiveTab match={match} summary={summary} recentBalls={recentBalls} playerCommentary={playerCommentary} />}
+        {tab === 'Info'      && <InfoTab match={match} matchId={id!} />}
         {tab === 'Scorecard' && <ScorecardTabContent matchId={id!} match={match} />}
         {tab === 'Summary'   && <SummaryTab matchId={id!} match={match} />}
         {tab === 'Graphs'    && <GraphsTab matchId={id!} match={match} />}
-        {tab === 'Squads'    && <SquadsTab match={match} />}
+        {tab === 'Squads'    && <SquadsTab match={match} matchId={id!} />}
       </View>
 
       {/* Bottom action bar */}
@@ -1816,6 +2208,58 @@ export default function LiveScreen() {
               {match?.state === 'TOSS_DONE' ? 'Setup Players & Start' : 'Setup Toss & Start'}
             </Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Super Over Break — offer organizer to start super over or end as tie */}
+      {(isSuperOverBreak || showSuperOverBreak) && canScore && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 20, paddingTop: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+          <Text style={{ textAlign: 'center', fontWeight: '800', fontSize: 15, color: '#1E3A5F', marginBottom: 4 }}>Match Tied!</Text>
+          <Text style={{ textAlign: 'center', fontSize: 12, color: '#6B7280', marginBottom: 14 }}>Scores are level. Choose what happens next.</Text>
+          <TouchableOpacity
+            onPress={() => router.push(`/match/${id}/score` as any)}
+            style={{ backgroundColor: '#F59E0B', borderRadius: 14, paddingVertical: 13, alignItems: 'center', marginBottom: 10 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Start Super Over</Text>
+          </TouchableOpacity>
+          {isOwner && (
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await endMatchAsTie(id!);
+                  setShowSuperOverBreak(false);
+                } catch (e: any) { Alert.alert('Error', e.message); }
+              }}
+              style={{ backgroundColor: '#F3F4F6', borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}
+            >
+              <Text style={{ color: '#374151', fontWeight: '700', fontSize: 14 }}>End Match as Tie</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Super Over Innings Break — show "Start 2nd innings" button */}
+      {(isSuperOverInningsBreak || showSuperOverInningsBreak) && canScore && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 20, paddingTop: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+          <Text style={{ textAlign: 'center', fontWeight: '800', fontSize: 15, color: '#1E3A5F', marginBottom: 4 }}>
+            Super Over: 1st Innings Complete
+          </Text>
+          <Text style={{ textAlign: 'center', fontSize: 12, color: '#6B7280', marginBottom: 14 }}>
+            Target: {(match?.superOver?.first?.totalRuns ?? 0) + 1} runs
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push(`/match/${id}/score` as any)}
+            style={{ backgroundColor: '#1E3A5F', borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Start 2nd Super Over Innings</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Super Over active badge */}
+      {isSuperOverActive && (
+        <View style={{ position: 'absolute', top: 60, alignSelf: 'center', backgroundColor: '#F59E0B', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, elevation: 6, zIndex: 99 }}>
+          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12, letterSpacing: 1 }}>SUPER OVER</Text>
         </View>
       )}
     </SafeAreaView>

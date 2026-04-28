@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { router } from 'expo-router';
 import { SOCKET_URL } from '@constants/index';
 import { useAuthStore } from '@store/authStore';
 
@@ -20,15 +21,22 @@ export const connectSocket = (): Socket => {
   });
 
   socket.on('connect', () => {
-    console.log('[Socket] Connected:', socket?.id);
+    if (__DEV__) console.log('[Socket] Connected:', socket?.id);
   });
 
   socket.on('connect_error', (err) => {
-    console.warn('[Socket] Connection error:', err.message);
+    if (__DEV__) console.warn('[Socket] Connection error:', err.message);
+    if (err.message === 'Invalid token' || err.message === 'Authentication required') {
+      socket?.disconnect();
+      socket = null;
+      useAuthStore.getState().logout().then(() => {
+        router.replace('/(auth)/login' as any);
+      });
+    }
   });
 
   socket.on('disconnect', (reason) => {
-    console.log('[Socket] Disconnected:', reason);
+    if (__DEV__) console.log('[Socket] Disconnected:', reason);
   });
 
   return socket;
@@ -54,7 +62,7 @@ export const leaveMatch = (matchId: string) => {
 };
 
 export const onMatchEvent = (
-  event: 'BALL_ADDED' | 'MATCH_UPDATED' | 'JOINED_MATCH' | 'MATCH_STATE_CHANGED',
+  event: 'BALL_ADDED' | 'MATCH_UPDATED' | 'JOINED_MATCH' | 'MATCH_STATE_CHANGED' | 'PLAYER_CHANGED' | 'BALL_REMOVED',
   cb: (data: unknown) => void
 ) => {
   socket?.on(event, cb);

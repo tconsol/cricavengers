@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { View, Text, FlatList, TouchableOpacity, TextInput, RefreshControl, Image } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTeamStore } from '@store/teamStore';
@@ -27,17 +27,25 @@ function TeamRow({ team, onPress }: { team: any; onPress: () => void }) {
       }}
     >
       {/* Team avatar */}
-      <View style={{
-        width: 52, height: 52, borderRadius: 26,
-        backgroundColor: (team.color || '#1E3A5F') + '20',
-        alignItems: 'center', justifyContent: 'center',
-        marginRight: 12, borderWidth: 2,
-        borderColor: team.color || '#1E3A5F',
-      }}>
-        <Text style={{ fontWeight: '900', fontSize: 14, color: team.color || '#1E3A5F' }}>
-          {team.shortName || team.name?.slice(0, 2).toUpperCase()}
-        </Text>
-      </View>
+      {team.logo ? (
+        <Image
+          source={{ uri: team.logo }}
+          style={{ width: 52, height: 52, borderRadius: 26, marginRight: 12, borderWidth: 2, borderColor: team.color || '#1E3A5F' }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={{
+          width: 52, height: 52, borderRadius: 26,
+          backgroundColor: (team.color || '#1E3A5F') + '20',
+          alignItems: 'center', justifyContent: 'center',
+          marginRight: 12, borderWidth: 2,
+          borderColor: team.color || '#1E3A5F',
+        }}>
+          <Text style={{ fontWeight: '900', fontSize: 14, color: team.color || '#1E3A5F' }}>
+            {team.shortName || team.name?.slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+      )}
 
       {/* Info */}
       <View style={{ flex: 1 }}>
@@ -79,8 +87,9 @@ function TeamRow({ team, onPress }: { team: any; onPress: () => void }) {
 export default function TeamsScreen() {
   const { teams, fetchTeams, isLoading } = useTeamStore();
   const { user } = useAuthStore();
+  const params = useLocalSearchParams<{ mine?: string }>();
   const [search, setSearch] = useState('');
-  const [mine, setMine] = useState(false);
+  const [mine, setMine] = useState(params.mine === 'true');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => { fetchTeams({ mine: mine ? 'true' : 'false' }); }, [mine]);

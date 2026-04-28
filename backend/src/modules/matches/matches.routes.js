@@ -19,6 +19,9 @@ router.post('/:id/toss', requireMatchRole('organizer', 'scorer', 'umpire'), vali
 router.post('/:id/innings/start', requireMatchRole('organizer', 'scorer', 'umpire'), validate(setPlayersSchema), controller.startInnings);
 router.post('/:id/innings/end', requireMatchRole('organizer', 'scorer', 'umpire'), controller.endInnings);
 router.post('/:id/roles', controller.addRole);
+router.delete('/:id/roles/:targetUserId', controller.removeRole);
+router.put('/:id/squad', controller.updateSquad);
+router.post('/:id/super-over/end-match', requireMatchRole('organizer', 'scorer', 'umpire'), controller.endMatchAsTie);
 router.post('/:id/abandon', requireMatchRole('organizer'), controller.abandonMatch);
 
 module.exports = router;

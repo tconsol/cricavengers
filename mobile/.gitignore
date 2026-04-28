@@ -4,3 +4,16 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# Environment variables — never commit real values
+.env
+.env.local
+.env.production
+
+# EAS signing keys — never commit
+google-service-account.json
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision

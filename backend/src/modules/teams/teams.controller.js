@@ -1,5 +1,6 @@
 const teamsService = require('./teams.service');
 const { success, paginated } = require('../../utils/response');
+const { fileUrl } = require('../../middlewares/upload');
 
 const createTeam = async (req, res, next) => {
   try {
@@ -57,4 +58,13 @@ const searchPlayers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createTeam, getTeams, getTeam, updateTeam, addPlayer, removePlayer, deleteTeam, searchPlayers };
+const uploadTeamLogo = async (req, res, next) => {
+  try {
+    if (!req.file) return next(new (require('../../middlewares/errorHandler').AppError)('No file uploaded', 400, 'NO_FILE'));
+    const url = fileUrl(req, 'teams', req.file.filename);
+    const team = await teamsService.updateTeamLogo(req.params.id, url, req.userId);
+    success(res, { team }, 'Team logo updated');
+  } catch (err) { next(err); }
+};
+
+module.exports = { createTeam, getTeams, getTeam, updateTeam, uploadTeamLogo, addPlayer, removePlayer, deleteTeam, searchPlayers };

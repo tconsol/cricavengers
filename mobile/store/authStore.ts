@@ -7,6 +7,7 @@ interface User {
   _id: string;
   name: string;
   email: string;
+  phone: string | null;
   avatar: string | null;
   role: string;
   stats: Record<string, number>;

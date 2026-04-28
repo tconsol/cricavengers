@@ -353,8 +353,19 @@ const recalcStandings = async (tournamentId) => {
   return t.standings;
 };
 
+const updateTournamentLogo = async (id, logoUrl, userId) => {
+  const t = await Tournament.findById(id);
+  if (!t) throw new AppError('Tournament not found', 404, 'NOT_FOUND');
+  if (t.createdBy.toString() !== userId) throw new AppError('Not authorized', 403, 'FORBIDDEN');
+
+  t.logo = logoUrl;
+  await t.save();
+  emitToAll('TOURNAMENT_UPDATED', { tournament: t });
+  return t;
+};
+
 module.exports = {
   createTournament, getTournaments, getTournamentById, updateTournament, deleteTournament,
   registerTeam, approveTeamRequest, rejectTeamRequest, removeTeam,
-  generateFixtures, deleteFixtures, recalcStandings,
+  generateFixtures, deleteFixtures, recalcStandings, updateTournamentLogo,
 };

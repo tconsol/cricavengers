@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Alert, FlatList, RefreshControl, TextInput,
+  Alert, FlatList, RefreshControl, TextInput, Image,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useTournamentStore, type Tournament, type Fixture, type StandingsEntry } from '@store/tournamentStore';
 import { useAuthStore } from '@store/authStore';
 import { useTeamStore } from '@store/teamStore';
+import { api } from '@services/api';
 
 const TABS = ['Overview', 'Standings', 'Fixtures', 'Teams'];
 
@@ -493,6 +495,7 @@ export default function TournamentDetailScreen() {
   const [activeTab, setActiveTab] = useState('Overview');
   const [addTeamVisible, setAddTeamVisible] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const load = useCallback(() => {
     fetchTournament(id!);
@@ -505,6 +508,25 @@ export default function TournamentDetailScreen() {
   }, [id]);
 
   const isOrganizer = tournament?.createdBy?._id === user?._id || tournament?.createdBy === user?._id;
+
+  const handleLogoUpload = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission required', 'Please allow photo library access.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const form = new FormData();
+    form.append('logo', { uri: asset.uri, type: asset.mimeType || 'image/jpeg', name: asset.fileName || 'logo.jpg' } as any);
+    setUploadingLogo(true);
+    try {
+      await api.upload(`/tournaments/${id}/logo`, form);
+      load();
+    } catch (err: any) { Alert.alert('Error', err.message || 'Failed to upload logo'); }
+    finally { setUploadingLogo(false); }
+  };
 
   const handleGenerateFixtures = async () => {
     if (tournament!.fixtures.length) {
@@ -612,7 +634,25 @@ export default function TournamentDetailScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
-          <Text className="text-white text-xl font-bold ml-3 flex-1" numberOfLines={1}>
+          <TouchableOpacity
+            onPress={isOrganizer ? handleLogoUpload : undefined}
+            activeOpacity={isOrganizer ? 0.8 : 1}
+            style={{ marginLeft: 10, marginRight: 10, position: 'relative' }}
+          >
+            {tournament.logo ? (
+              <Image source={{ uri: tournament.logo }} style={{ width: 38, height: 38, borderRadius: 10, borderWidth: 2, borderColor: '#F59E0B' }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="trophy" size={18} color="#F59E0B" />
+              </View>
+            )}
+            {isOrganizer && (
+              <View style={{ position: 'absolute', bottom: -4, right: -4, backgroundColor: '#F59E0B', borderRadius: 8, padding: 2 }}>
+                {uploadingLogo ? <ActivityIndicator size="small" color="#fff" style={{ width: 10, height: 10 }} /> : <Ionicons name="camera" size={10} color="#fff" />}
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text className="text-white text-xl font-bold flex-1" numberOfLines={1}>
             {tournament.name}
           </Text>
           <View className="px-2 py-1 rounded-full" style={{ backgroundColor: stateColor + '30' }}>

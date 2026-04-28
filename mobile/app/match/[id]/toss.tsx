@@ -126,7 +126,7 @@ function StepHeader({ num, label, sub }: { num: number; label: string; sub?: str
 // ─── Main Screen ──────────────────────────────────────────────
 export default function TossScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { currentMatch, fetchMatch, setToss, startInnings } = useMatchStore();
+  const { currentMatch, fetchMatch, setToss, startInnings, isLoading } = useMatchStore();
 
   // Toss flow state
   const [callingTeam, setCallingTeam] = useState<string | null>(null);
@@ -155,7 +155,9 @@ export default function TossScreen() {
   const match = currentMatch;
   const teamA = match?.teamA as any;
   const teamB = match?.teamB as any;
-  const isTossDone = ['TOSS_DONE', 'FIRST_INNINGS', 'SECOND_INNINGS', 'INNINGS_BREAK', 'COMPLETED'].includes(match?.state || '');
+  const isTossDone = ['TOSS_DONE', 'FIRST_INNINGS', 'SECOND_INNINGS', 'INNINGS_BREAK', 'SUPER_OVER_BREAK', 'SUPER_OVER_1', 'SUPER_OVER_INNINGS_BREAK', 'SUPER_OVER_2', 'COMPLETED'].includes(match?.state || '');
+  const isSuperOverBreak = match?.state === 'SUPER_OVER_BREAK';
+  const isSuperOverInningsBreak = match?.state === 'SUPER_OVER_INNINGS_BREAK';
 
   const playSound = async () => {
     try {
@@ -231,7 +233,10 @@ export default function TossScreen() {
     }
     setSubmitting(true);
     try {
-      await startInnings(id!, { innings: 1, striker, nonStriker, bowler });
+      let inningsNum = isInningsBreak ? 2 : 1;
+      if (isSuperOverBreak) inningsNum = 3;
+      if (isSuperOverInningsBreak) inningsNum = 4;
+      await startInnings(id!, { innings: inningsNum, striker, nonStriker, bowler });
       router.replace(`/match/${id}/score` as any);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to start innings');
@@ -241,13 +246,27 @@ export default function TossScreen() {
   };
 
   // Derived values
+  const isInningsBreak = match?.state === 'INNINGS_BREAK';
+
   const tossWinnerObj = isTossDone
     ? (teamA?._id?.toString() === match?.toss?.winner?.toString() ? teamA : teamB)
     : (tossWinnerId ? (teamA?._id?.toString() === tossWinnerId ? teamA : teamB) : null);
 
   const tossDec = match?.toss?.decision || decision;
   let battingTeam: any = null, bowlingTeam: any = null;
-  if (tossWinnerObj && tossDec) {
+  if (isSuperOverBreak && match?.superOver?.first) {
+    const soBattingId = (match.superOver.first.battingTeam?._id || match.superOver.first.battingTeam)?.toString();
+    battingTeam = soBattingId === teamA?._id?.toString() ? teamA : teamB;
+    bowlingTeam = battingTeam?._id?.toString() === teamA?._id?.toString() ? teamB : teamA;
+  } else if (isSuperOverInningsBreak && match?.superOver?.second) {
+    const soBattingId = (match.superOver.second.battingTeam?._id || match.superOver.second.battingTeam)?.toString();
+    battingTeam = soBattingId === teamA?._id?.toString() ? teamA : teamB;
+    bowlingTeam = battingTeam?._id?.toString() === teamA?._id?.toString() ? teamB : teamA;
+  } else if (isInningsBreak && match?.innings?.second) {
+    const secBattingId = (match.innings.second.battingTeam?._id || match.innings.second.battingTeam)?.toString();
+    battingTeam = secBattingId === teamA?._id?.toString() ? teamA : teamB;
+    bowlingTeam = battingTeam?._id?.toString() === teamA?._id?.toString() ? teamB : teamA;
+  } else if (tossWinnerObj && tossDec) {
     battingTeam = tossDec === 'bat' ? tossWinnerObj : (tossWinnerObj._id?.toString() === teamA?._id?.toString() ? teamB : teamA);
     bowlingTeam = battingTeam?._id?.toString() === teamA?._id?.toString() ? teamB : teamA;
   }
@@ -274,7 +293,12 @@ export default function TossScreen() {
         <View style={{ marginLeft: 12, flex: 1 }}>
           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }} numberOfLines={1}>{match.title}</Text>
           <Text style={{ color: '#93C5FD', fontSize: 12 }}>
-            {showPlayerSetup ? 'Set Opening Players' : 'Coin Toss'}
+            {showPlayerSetup
+              ? (isSuperOverBreak ? 'Set Super Over Players (Inn 1)'
+                  : isSuperOverInningsBreak ? 'Set Super Over Players (Inn 2)'
+                  : isInningsBreak ? 'Set 2nd Innings Players'
+                  : 'Set Opening Players')
+              : 'Coin Toss'}
           </Text>
         </View>
       </View>
@@ -491,30 +515,74 @@ export default function TossScreen() {
         )}
 
         {/* ══════════════════ PLAYER SETUP PHASE ══════════════════ */}
-        {showPlayerSetup && battingTeam && (
+        {showPlayerSetup && isLoading && !battingTeam?.players?.length && (
+          <View style={{ alignItems: 'center', paddingTop: 60 }}>
+            <ActivityIndicator size="large" color="#1E3A5F" />
+            <Text style={{ color: '#6B7280', marginTop: 12, fontSize: 14 }}>Loading players...</Text>
+          </View>
+        )}
+        {showPlayerSetup && battingTeam && (battingTeam?.players?.length > 0 || !isLoading) && (
           <>
-            {/* Toss result banner */}
-            <View style={{
-              backgroundColor: '#1E3A5F', borderRadius: 20, padding: 16, marginBottom: 20,
-              flexDirection: 'row', alignItems: 'center', gap: 14,
-            }}>
+            {/* Banner: toss result OR innings break summary */}
+            {(isSuperOverBreak || isSuperOverInningsBreak) ? (
+              <View style={{ backgroundColor: '#92400E', borderRadius: 20, padding: 16, marginBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 26 }}>🔥</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#FCD34D', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>
+                    {isSuperOverInningsBreak ? 'SUPER OVER — 2ND INNINGS' : 'SUPER OVER — 1ST INNINGS'}
+                  </Text>
+                  {isSuperOverInningsBreak && match?.superOver?.first && (
+                    <>
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16, marginTop: 2 }}>
+                        {match.superOver.first.totalRuns}/{match.superOver.first.wickets} in Super Over Inn 1
+                      </Text>
+                      <Text style={{ color: '#FCD34D', fontSize: 13, marginTop: 1 }}>
+                        Target: {(match.superOver.first.totalRuns ?? 0) + 1} runs
+                      </Text>
+                    </>
+                  )}
+                  {isSuperOverBreak && <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14, marginTop: 2 }}>Match tied — Super Over!</Text>}
+                </View>
+              </View>
+            ) : isInningsBreak ? (
               <View style={{
-                width: 52, height: 52, borderRadius: 26,
-                backgroundColor: '#F59E0B',
-                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#1E3A5F', borderRadius: 20, padding: 16, marginBottom: 20,
+                flexDirection: 'row', alignItems: 'center', gap: 14,
               }}>
-                <Text style={{ fontSize: 26 }}>🪙</Text>
+                <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 26 }}>⚡</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#93C5FD', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>2ND INNINGS SETUP</Text>
+                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16, marginTop: 2 }}>
+                    {match?.innings?.first ? `${match.innings.first.totalRuns}/${match.innings.first.wickets}` : '—'} in 1st innings
+                  </Text>
+                  <Text style={{ color: '#F59E0B', fontSize: 13, marginTop: 1 }}>
+                    Target: {(match?.innings?.first?.totalRuns ?? 0) + 1} runs
+                  </Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#93C5FD', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>TOSS RESULT</Text>
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16, marginTop: 2 }}>
-                  {tossWinnerObj?.name || 'Winner'} won the toss
-                </Text>
-                <Text style={{ color: '#F59E0B', fontSize: 13, marginTop: 1 }}>
-                  Elected to {match?.toss?.decision || tossDec} first
-                </Text>
+            ) : (
+              <View style={{
+                backgroundColor: '#1E3A5F', borderRadius: 20, padding: 16, marginBottom: 20,
+                flexDirection: 'row', alignItems: 'center', gap: 14,
+              }}>
+                <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 26 }}>🪙</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#93C5FD', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>TOSS RESULT</Text>
+                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16, marginTop: 2 }}>
+                    {tossWinnerObj?.name || 'Winner'} won the toss
+                  </Text>
+                  <Text style={{ color: '#F59E0B', fontSize: 13, marginTop: 1 }}>
+                    Elected to {match?.toss?.decision || tossDec} first
+                  </Text>
+                </View>
               </View>
-            </View>
+            )}
 
             {/* Batting section header */}
             <View style={{
@@ -657,7 +725,11 @@ export default function TossScreen() {
                 ? <ActivityIndicator color="#fff" size="small" />
                 : <Ionicons name="baseball" size={22} color="#fff" />}
               <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>
-                {submitting ? 'Starting Innings...' : 'Start Match!'}
+                {submitting ? 'Starting...'
+                  : isSuperOverBreak ? 'Start Super Over Inn 1!'
+                  : isSuperOverInningsBreak ? 'Start Super Over Inn 2!'
+                  : isInningsBreak ? 'Start 2nd Innings!'
+                  : 'Start Match!'}
               </Text>
             </TouchableOpacity>
           </>

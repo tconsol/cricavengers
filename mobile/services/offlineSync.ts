@@ -16,7 +16,6 @@ export interface OfflineAction {
 }
 
 const MAX_RETRIES = 5;
-const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000];
 
 export const enqueueAction = async (action: Omit<OfflineAction, 'id' | 'createdAt' | 'retries' | 'maxRetries'>): Promise<string> => {
   const queue = await getQueue();
@@ -92,7 +91,9 @@ export const syncQueue = async (): Promise<{ synced: number; failed: number }> =
 export const startSyncListener = (): (() => void) => {
   return NetInfo.addEventListener((state) => {
     if (state.isConnected) {
-      syncQueue().catch(console.error);
+      syncQueue().catch((err) => {
+        if (__DEV__) console.error('[OfflineSync] Sync failed:', err);
+      });
     }
   });
 };

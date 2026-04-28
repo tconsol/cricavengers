@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, Modal, TouchableOpacity, Animated, Dimensions,
+  View, Text, Modal, TouchableOpacity, Animated, Dimensions, GestureResponderEvent,
 } from 'react-native';
 
 const { width: SW } = Dimensions.get('window');
@@ -71,12 +71,34 @@ export default function GroundPicker({
     }
   }, [selected]);
 
-  const handleZone = (id: string) => {
-    setSelected(id === selected ? null : id);
+  const handleZone = (id: string) => setSelected(id === selected ? null : id);
+
+  // Tap anywhere on the field → snap to nearest zone
+  const handleFieldTap = (e: GestureResponderEvent) => {
+    const { locationX, locationY } = e.nativeEvent;
+    const tapXPct = (locationX / FIELD_SIZE) * 100;
+    const tapYPct = (locationY / FIELD_SIZE) * 100;
+    let nearest = ZONES[0];
+    let minDist = Infinity;
+    for (const z of ZONES) {
+      const d = Math.sqrt((z.xp - tapXPct) ** 2 + (z.yp - tapYPct) ** 2);
+      if (d < minDist) { minDist = d; nearest = z; }
+    }
+    setSelected(nearest.id === selected ? null : nearest.id);
   };
 
   const handleConfirm = () => onConfirm(selected);
   const handleSkip    = () => onConfirm(null);
+
+  // Auto-confirm 400ms after selecting a zone (one tap = done)
+  const autoConfirmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (selected) {
+      if (autoConfirmRef.current) clearTimeout(autoConfirmRef.current);
+      autoConfirmRef.current = setTimeout(() => onConfirm(selected), 500);
+    }
+    return () => { if (autoConfirmRef.current) clearTimeout(autoConfirmRef.current); };
+  }, [selected]);
 
   // Determine badge color by run/event type
   const badgeColor = isWicket ? '#EF4444' : runs === 6 ? '#16A34A' : runs === 4 ? '#2563EB' : '#1E3A5F';
@@ -125,7 +147,11 @@ export default function GroundPicker({
               <Text style={{ fontSize: 9, color: '#9CA3AF', fontWeight: '600' }}>OFF SIDE</Text>
             </View>
 
-            <View style={{ width: FIELD_SIZE, height: FIELD_SIZE, position: 'relative' }}>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={handleFieldTap}
+              style={{ width: FIELD_SIZE, height: FIELD_SIZE, position: 'relative' }}
+            >
               {/* Oval field background */}
               <View style={{
                 position: 'absolute', left: 0, top: 0, right: 0, bottom: 0,
@@ -189,14 +215,14 @@ export default function GroundPicker({
                 }} />
               )}
 
-              {/* Zone buttons */}
+              {/* Zone labels — visual only, tap is handled by parent TouchableOpacity */}
               {ZONES.map((zone) => {
                 const isSelected = selected === zone.id;
                 const zoneColor = zone.leg ? '#7C3AED' : '#1D4ED8';
                 return (
-                  <TouchableOpacity
+                  <View
                     key={zone.id}
-                    onPress={() => handleZone(zone.id)}
+                    pointerEvents="none"
                     style={{
                       position: 'absolute',
                       left: (zone.xp / 100) * FIELD_SIZE - 18,
@@ -210,18 +236,18 @@ export default function GroundPicker({
                       borderColor: isSelected ? zoneColor : 'rgba(0,0,0,0.12)',
                       alignItems: 'center',
                     }}
-                    activeOpacity={0.7}
                   >
                     <Text style={{
-                      fontSize: 7, fontWeight: '800', color: isSelected ? '#fff' : '#374151',
+                      fontSize: 7, fontWeight: '800',
+                      color: isSelected ? '#fff' : '#374151',
                       textAlign: 'center',
                     }}>
                       {zone.short}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
-            </View>
+            </TouchableOpacity>
 
             {/* Selected zone label */}
             <Text style={{ marginTop: 6, fontSize: 12, color: '#6B7280', fontWeight: '600', height: 18 }}>

@@ -3,8 +3,8 @@ const Match = require('../../models/Match');
 const AuditLog = require('../../models/AuditLog');
 const { AppError } = require('../../middlewares/errorHandler');
 const { validateBallInput, isLegalDelivery } = require('../../utils/scoring-engine');
-const { recomputeSummary } = require('./scoreSummary.service');
-const { emitMatchUpdate } = require('../../sockets');
+const { recomputeSummary, getLiveSummary } = require('./scoreSummary.service');
+const { emitMatchUpdate, emitToAll } = require('../../sockets');
 
 /**
  * Add a new ball to the match.
@@ -14,7 +14,8 @@ const addBall = async (matchId, data, userId) => {
   const match = await Match.findById(matchId);
   if (!match) throw new AppError('Match not found', 404, 'NOT_FOUND');
 
-  const validStates = ['FIRST_INNINGS', 'SECOND_INNINGS'];
+  const STATE_TO_INNINGS = { FIRST_INNINGS: 1, SECOND_INNINGS: 2, SUPER_OVER_1: 3, SUPER_OVER_2: 4 };
+  const validStates = Object.keys(STATE_TO_INNINGS);
   if (!validStates.includes(match.state)) {
     throw new AppError(`Cannot score in match state: ${match.state}`, 400, 'INVALID_STATE');
   }
@@ -23,64 +24,92 @@ const addBall = async (matchId, data, userId) => {
   const errors = validateBallInput(data);
   if (errors.length) throw new AppError(errors.join('; '), 400, 'VALIDATION_ERROR');
 
-  // Determine over/ball number from existing balls
-  const innings = data.innings;
-  const lastBall = await Ball.findOne({ matchId, innings, isDeleted: false })
-    .sort({ over: -1, ball: -1 });
+  // Innings number is derived from match state (not client input) for safety
+  const innings = STATE_TO_INNINGS[match.state];
 
-  let over = 0, ball = 1;
-  if (lastBall) {
-    if (isLegalDelivery(lastBall)) {
-      // last was legal
-      if (lastBall.ball >= 6) {
-        over = lastBall.over + 1;
-        ball = 1;
-      } else {
-        over = lastBall.over;
-        ball = lastBall.ball + 1;
-      }
-    } else {
-      // last was wide/no-ball — same over/ball slot
-      over = lastBall.over;
-      ball = lastBall.ball;
+  const computeNextSlot = async () => {
+    const last = await Ball.findOne({ matchId, innings, isDeleted: false })
+      .sort({ over: -1, ball: -1 });
+
+    if (!last) return { over: 0, ball: 1 };
+
+    // Count legal deliveries in the current over (sequential ball# can exceed 6 due to
+    // wides/no-balls, so we must use legal count — NOT last.ball — to detect over completion).
+    const legalInOver = await Ball.countDocuments({
+      matchId, innings, over: last.over, isLegal: true, isDeleted: false,
+    });
+
+    if (legalInOver >= 6) {
+      return { over: last.over + 1, ball: 1 };
     }
-  }
+    return { over: last.over, ball: last.ball + 1 };
+  };
+
+  let { over, ball } = await computeNextSlot();
 
   const legal = isLegalDelivery(data);
 
-  const newBall = await Ball.create({
-    matchId,
-    innings: data.innings,
-    over,
-    ball,
-    batsman: data.batsman,
-    bowler: data.bowler,
-    runs: data.runs,
-    extras: data.extras || {},
-    wicket: data.wicket || null,
-    isLegal: legal,
-    strikerAfter: data.strikerAfter || null,
-    nonStrikerAfter: data.nonStrikerAfter || null,
-    shotRegion: data.shotRegion || null,
-  });
+  let newBall;
+  try {
+    newBall = await Ball.create({
+      matchId,
+      innings: data.innings,
+      over,
+      ball,
+      batsman: data.batsman,
+      bowler: data.bowler,
+      runs: data.runs,
+      extras: data.extras || {},
+      wicket: data.wicket || null,
+      isLegal: legal,
+      strikerAfter: data.strikerAfter || null,
+      nonStrikerAfter: data.nonStrikerAfter || null,
+      shotRegion: data.shotRegion || null,
+    });
+  } catch (err) {
+    // E11000: two concurrent requests computed the same (over, ball) slot.
+    // Re-derive the slot with the freshest DB state and retry once.
+    if (err.code === 11000) {
+      ({ over, ball } = await computeNextSlot());
+      newBall = await Ball.create({
+        matchId,
+        innings: data.innings,
+        over,
+        ball,
+        batsman: data.batsman,
+        bowler: data.bowler,
+        runs: data.runs,
+        extras: data.extras || {},
+        wicket: data.wicket || null,
+        isLegal: legal,
+        strikerAfter: data.strikerAfter || null,
+        nonStrikerAfter: data.nonStrikerAfter || null,
+        shotRegion: data.shotRegion || null,
+      });
+    } else {
+      throw err;
+    }
+  }
 
-  // Update match innings state
-  const inningsKey = innings === 1 ? 'first' : 'second';
+  // Update match innings state (regular or super over)
+  const isSuperOver = innings >= 3;
+  const inningsKey = (innings === 1 || innings === 3) ? 'first' : 'second';
+  const inningsPath = isSuperOver ? `superOver.${inningsKey}` : `innings.${inningsKey}`;
   const totalRuns = (data.runs || 0) + (data.extras?.runs || 0);
 
   await Match.findByIdAndUpdate(matchId, {
     $inc: {
-      [`innings.${inningsKey}.totalRuns`]: totalRuns,
-      [`innings.${inningsKey}.wickets`]: data.wicket ? 1 : 0,
-      [`innings.${inningsKey}.balls`]: legal ? 1 : 0,
+      [`${inningsPath}.totalRuns`]: totalRuns,
+      [`${inningsPath}.wickets`]: data.wicket ? 1 : 0,
+      [`${inningsPath}.balls`]: legal ? 1 : 0,
     },
   });
 
   // Recompute summary (source of truth)
-  const summary = await recomputeSummary(matchId);
+  const rawSummary = await recomputeSummary(matchId);
 
   // Check auto-completion conditions
-  await _checkInningsCompletion(matchId, match, innings, summary);
+  await _checkInningsCompletion(matchId, match, innings, rawSummary);
 
   await AuditLog.create({
     matchId,
@@ -91,8 +120,22 @@ const addBall = async (matchId, data, userId) => {
     after: newBall.toObject(),
   });
 
-  // Real-time broadcast
+  // Return populated summary so striker/bowler names are available on the client
+  const summary = await getLiveSummary(matchId);
+
+  // Real-time broadcast to match room (scorers / live viewers)
   emitMatchUpdate(matchId, 'BALL_ADDED', { ball: newBall, summary });
+
+  // Lightweight global broadcast so home screen live cards update score without joining match room
+  const cs = summary?.currentState;
+  emitToAll('LIVE_SCORE_UPDATE', {
+    matchId: matchId.toString(),
+    innings: cs?.innings,
+    totalRuns: cs?.totalRuns ?? 0,
+    wickets: cs?.wickets ?? 0,
+    over: cs?.over ?? 0,
+    ball: cs?.ball ?? 0,
+  });
 
   return { ball: newBall, summary };
 };
@@ -101,14 +144,18 @@ const _checkInningsCompletion = async (matchId, match, innings, summary) => {
   const inningsSummary = summary.innings[innings - 1];
   if (!inningsSummary) return;
 
-  const currentInningsKey = innings === 1 ? 'first' : 'second';
-  const maxOvers = match.totalOvers;
+  // Super over = max 1 over; regular = match.totalOvers
+  const isSuperOver = innings >= 3;
+  const maxOvers = isSuperOver ? 1 : match.totalOvers;
   const oversComplete = inningsSummary.overs >= maxOvers && inningsSummary.balls === 0;
-  const allOut = inningsSummary.wickets >= 10;
+  const allOut = inningsSummary.wickets >= (isSuperOver ? 2 : 10); // super over: 2 wickets end it
 
-  // Second innings: target achieved
-  const target = match.innings?.second?.target;
-  const targetAchieved = innings === 2 && target && inningsSummary.totalRuns >= target;
+  // Target achieved (2nd innings of each phase)
+  const target = isSuperOver
+    ? match.superOver?.second?.target
+    : match.innings?.second?.target;
+  const isSecondPhase = isSuperOver ? innings === 4 : innings === 2;
+  const targetAchieved = isSecondPhase && target && inningsSummary.totalRuns >= target;
 
   if (oversComplete || allOut || targetAchieved) {
     const { endInnings } = require('../matches/matches.service');
@@ -121,7 +168,13 @@ const _checkInningsCompletion = async (matchId, match, innings, summary) => {
 /**
  * Undo the last ball — marks as deleted and recomputes.
  */
-const undoBall = async (matchId, innings, userId) => {
+const undoBall = async (matchId, _inningsIgnored, userId) => {
+  const match = await Match.findById(matchId);
+  if (!match) throw new AppError('Match not found', 404, 'NOT_FOUND');
+  const STATE_TO_INNINGS = { FIRST_INNINGS: 1, SECOND_INNINGS: 2, SUPER_OVER_1: 3, SUPER_OVER_2: 4 };
+  const innings = STATE_TO_INNINGS[match.state];
+  if (!innings) throw new AppError('Cannot undo in current match state', 400, 'INVALID_STATE');
+
   const ball = await Ball.findOne({ matchId, innings, isDeleted: false })
     .sort({ over: -1, ball: -1 });
 
@@ -133,7 +186,7 @@ const undoBall = async (matchId, innings, userId) => {
   ball.editedBy = userId;
   await ball.save();
 
-  const summary = await recomputeSummary(matchId);
+  await recomputeSummary(matchId);
 
   await AuditLog.create({
     matchId, userId,
@@ -144,7 +197,19 @@ const undoBall = async (matchId, innings, userId) => {
     after: { isDeleted: true },
   });
 
-  emitMatchUpdate(matchId, 'MATCH_UPDATED', { summary });
+  const summary = await getLiveSummary(matchId);
+  emitMatchUpdate(matchId, 'BALL_REMOVED', { removedBallId: ball._id.toString(), summary });
+
+  // Update home screen live cards after undo
+  const cs = summary?.currentState;
+  emitToAll('LIVE_SCORE_UPDATE', {
+    matchId: matchId.toString(),
+    innings: cs?.innings,
+    totalRuns: cs?.totalRuns ?? 0,
+    wickets: cs?.wickets ?? 0,
+    over: cs?.over ?? 0,
+    ball: cs?.ball ?? 0,
+  });
 
   return { ball, summary };
 };
@@ -167,7 +232,7 @@ const editBall = async (matchId, ballId, updates, userId) => {
 
   await ball.save();
 
-  const summary = await recomputeSummary(matchId);
+  await recomputeSummary(matchId);
 
   await AuditLog.create({
     matchId, userId,
@@ -178,6 +243,7 @@ const editBall = async (matchId, ballId, updates, userId) => {
     after: ball.toObject(),
   });
 
+  const summary = await getLiveSummary(matchId);
   emitMatchUpdate(matchId, 'MATCH_UPDATED', { summary });
 
   return { ball, summary };
@@ -196,7 +262,7 @@ const deleteBall = async (matchId, ballId, userId) => {
   ball.editedBy = userId;
   await ball.save();
 
-  const summary = await recomputeSummary(matchId);
+  await recomputeSummary(matchId);
 
   await AuditLog.create({
     matchId, userId,
@@ -207,6 +273,7 @@ const deleteBall = async (matchId, ballId, userId) => {
     after: { isDeleted: true },
   });
 
+  const summary = await getLiveSummary(matchId);
   emitMatchUpdate(matchId, 'MATCH_UPDATED', { summary });
 
   return { summary };
@@ -247,7 +314,8 @@ const getAuditLog = async (matchId) => {
 
 /**
  * Update current players (striker / non-striker / bowler) mid-innings.
- * Used after a wicket when the new batsman is selected.
+ * Used after a wicket (new batsman) or after each over (new bowler).
+ * Emits BALL_ADDED socket so live viewers refresh instantly.
  */
 const setCurrentPlayers = async (matchId, { striker, nonStriker, bowler }) => {
   const ScoreSummary = require('../../models/ScoreSummary');
@@ -265,6 +333,9 @@ const setCurrentPlayers = async (matchId, { striker, nonStriker, bowler }) => {
     .populate('currentState.striker', 'name')
     .populate('currentState.nonStriker', 'name')
     .populate('currentState.currentBowler', 'name');
+
+  // Broadcast to all live viewers so the live tab shows new batsman/bowler immediately
+  emitMatchUpdate(matchId, 'PLAYER_CHANGED', { summary });
 
   return summary;
 };

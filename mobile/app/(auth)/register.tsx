@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
+  View, Text, TextInput, TouchableOpacity, Image,
   KeyboardAvoidingView, Platform, ScrollView, Alert,
   StatusBar, TextInput as RNTextInput,
 } from 'react-native';
@@ -67,15 +67,11 @@ export default function RegisterScreen() {
       >
         {/* Hero */}
         <View style={{ alignItems: 'center', paddingTop: 64, paddingBottom: 36, paddingHorizontal: 24 }}>
-          <View style={{
-            width: 72, height: 72, borderRadius: 36,
-            backgroundColor: 'rgba(245,158,11,0.15)',
-            borderWidth: 1.5, borderColor: 'rgba(245,158,11,0.3)',
-            alignItems: 'center', justifyContent: 'center',
-            marginBottom: 16,
-          }}>
-            <Text style={{ fontSize: 36 }}>🏏</Text>
-          </View>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={{ width: 72, height: 72, borderRadius: 16, marginBottom: 16 }}
+            resizeMode="cover"
+          />
           <Text style={{ fontSize: 28, fontWeight: '900', color: '#fff' }}>Create Account</Text>
           <Text style={{ color: '#93C5FD', marginTop: 4, fontSize: 14 }}>
             Start scoring matches today

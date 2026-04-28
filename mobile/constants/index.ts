@@ -1,9 +1,14 @@
-// 10.0.2.2 = emulator localhost; replace with your machine's LAN IP for Expo Go / physical device
-const API_HOST = process.env.EXPO_PUBLIC_API_HOST || '192.168.1.14';
-const API_PORT = process.env.EXPO_PUBLIC_API_PORT || '5000';
+// Requires EXPO_PUBLIC_API_URL and EXPO_PUBLIC_SOCKET_URL in your .env file.
+// For local dev: http://10.0.2.2:5000 (Android emulator) or http://<LAN-IP>:5000 (physical device)
+// For production: https://api.yourdomain.com
+if (!process.env.EXPO_PUBLIC_API_URL || !process.env.EXPO_PUBLIC_SOCKET_URL) {
+  console.warn('[Config] EXPO_PUBLIC_API_URL or EXPO_PUBLIC_SOCKET_URL is not set. Check your .env file.');
+}
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${API_HOST}:${API_PORT}/api/v1`;
-export const SOCKET_URL  = process.env.EXPO_PUBLIC_SOCKET_URL || `http://${API_HOST}:${API_PORT}`;
+export const API_BASE_URL    = process.env.EXPO_PUBLIC_API_URL as string;
+export const SOCKET_URL      = process.env.EXPO_PUBLIC_SOCKET_URL as string;
+// Base URL for uploaded images (strips /api/v1 suffix)
+export const UPLOADS_BASE_URL = (process.env.EXPO_PUBLIC_API_URL as string || '').replace(/\/api\/v\d+$/, '');
 
 export const MATCH_STATES = {
   NOT_STARTED:    'NOT_STARTED',

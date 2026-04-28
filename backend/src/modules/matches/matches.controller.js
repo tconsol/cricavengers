@@ -72,6 +72,20 @@ const addRole = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const removeRole = async (req, res, next) => {
+  try {
+    const match = await matchesService.removeRole(req.params.id, req.params.targetUserId, req.userId);
+    success(res, { match }, 'Role removed');
+  } catch (err) { next(err); }
+};
+
+const updateSquad = async (req, res, next) => {
+  try {
+    const match = await matchesService.updateSquad(req.params.id, req.body, req.userId);
+    success(res, { match }, 'Squad updated');
+  } catch (err) { next(err); }
+};
+
 const abandonMatch = async (req, res, next) => {
   try {
     const match = await matchesService.abandonMatch(req.params.id, req.userId);
@@ -79,7 +93,14 @@ const abandonMatch = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const endMatchAsTie = async (req, res, next) => {
+  try {
+    const match = await matchesService.endMatchAsTie(req.params.id, req.userId);
+    success(res, { match }, 'Match ended as tie');
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   createMatch, getMatches, getLiveMatches, getMatch, getMatchScorecard, getMatchGraphs,
-  setToss, startInnings, endInnings, addRole, abandonMatch,
+  setToss, startInnings, endInnings, endMatchAsTie, addRole, removeRole, updateSquad, abandonMatch,
 };

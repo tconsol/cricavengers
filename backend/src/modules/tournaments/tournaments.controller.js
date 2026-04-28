@@ -1,5 +1,6 @@
 const service = require('./tournaments.service');
 const { success, paginated } = require('../../utils/response');
+const { fileUrl } = require('../../middlewares/upload');
 
 const createTournament = async (req, res, next) => {
   try {
@@ -86,8 +87,17 @@ const getStandings = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const uploadTournamentLogo = async (req, res, next) => {
+  try {
+    if (!req.file) return next(new (require('../../middlewares/errorHandler').AppError)('No file uploaded', 400, 'NO_FILE'));
+    const url = fileUrl(req, 'tournaments', req.file.filename);
+    const t = await service.updateTournamentLogo(req.params.id, url, req.userId);
+    success(res, { tournament: t }, 'Tournament logo updated');
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   createTournament, getTournaments, getTournament, updateTournament, deleteTournament,
   registerTeam, approveRequest, rejectRequest, removeTeam,
-  generateFixtures, deleteFixtures, getStandings,
+  generateFixtures, deleteFixtures, getStandings, uploadTournamentLogo,
 };

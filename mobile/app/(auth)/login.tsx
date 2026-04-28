@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
+  View, Text, TextInput, TouchableOpacity, Image,
   KeyboardAvoidingView, Platform, ScrollView, Alert, StatusBar,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -52,15 +52,11 @@ export default function LoginScreen() {
       >
         {/* Hero section */}
         <View style={{ alignItems: 'center', paddingTop: 80, paddingBottom: 52, paddingHorizontal: 24 }}>
-          <View style={{
-            width: 88, height: 88, borderRadius: 44,
-            backgroundColor: 'rgba(245,158,11,0.15)',
-            borderWidth: 1.5, borderColor: 'rgba(245,158,11,0.3)',
-            alignItems: 'center', justifyContent: 'center',
-            marginBottom: 20,
-          }}>
-            <Text style={{ fontSize: 44 }}>🏏</Text>
-          </View>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={{ width: 88, height: 88, borderRadius: 20, marginBottom: 20 }}
+            resizeMode="cover"
+          />
           <Text style={{ fontSize: 34, fontWeight: '900', color: '#fff', letterSpacing: -0.5 }}>
             CricAvengers
           </Text>

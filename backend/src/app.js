@@ -21,14 +21,25 @@ const tournamentRoutes  = require('./modules/tournaments/tournaments.routes');
 
 const app = express();
 
+// Force HTTPS in production (when behind a reverse proxy like nginx/AWS ALB)
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.header('x-forwarded-proto') !== 'https') {
+      return res.redirect(301, `https://${req.header('host')}${req.url}`);
+    }
+    next();
+  });
+}
+
 // Security
 app.use(helmet());
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow all origins in development; mobile apps often omit Origin header entirely
+    // Mobile apps omit Origin header — always allow undefined origin
+    if (!origin) return cb(null, true);
     if (process.env.NODE_ENV !== 'production') return cb(null, true);
-    const allowed = (process.env.ALLOWED_ORIGINS || '').split(',');
-    if (!origin || allowed.includes(origin)) return cb(null, true);
+    const allowed = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim());
+    if (allowed.includes(origin)) return cb(null, true);
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -45,6 +56,10 @@ app.use(morgan('combined', {
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Static uploads
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Rate limiting
 app.use('/api/', rateLimiter);

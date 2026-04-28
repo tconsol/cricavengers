@@ -295,7 +295,7 @@ const getLeaderboard = async (type = 'batting', limit = 20) => {
       { $sort: { totalRuns: -1 } },
       { $limit: parseInt(limit) },
       { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'player' } },
-      { $unwind: { path: '$player', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
       { $project: { player: { name: 1, avatar: 1 }, totalRuns: 1, matches: { $size: '$matches' } } },
     ]);
   }

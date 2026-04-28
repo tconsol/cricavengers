@@ -13,21 +13,31 @@ const recomputeSummary = async (matchId) => {
   const match = await Match.findById(matchId);
   if (!match) throw new AppError('Match not found', 404, 'NOT_FOUND');
 
+  const SUPER_OVER_STATES = ['SUPER_OVER_BREAK', 'SUPER_OVER_1', 'SUPER_OVER_INNINGS_BREAK', 'SUPER_OVER_2'];
+  const hasSuperOver = match.superOver?.first != null;
+  const isSuperOverPhase = SUPER_OVER_STATES.includes(match.state) || hasSuperOver;
   const maxOvers = match.totalOvers;
   const inningsSummaries = [];
 
-  for (const inningsNum of [1, 2]) {
+  const inningsToProcess = isSuperOverPhase ? [1, 2, 3, 4] : [1, 2];
+
+  for (const inningsNum of inningsToProcess) {
     const balls = await Ball.find({ matchId, innings: inningsNum, isDeleted: false })
       .sort({ over: 1, ball: 1 })
       .lean();
 
-    if (balls.length === 0 && inningsNum === 2 && match.state !== 'SECOND_INNINGS' && match.state !== 'COMPLETED') {
+    if (inningsNum === 2 && balls.length === 0 && match.state !== 'SECOND_INNINGS' && match.state !== 'COMPLETED' && !isSuperOverPhase) {
+      inningsSummaries.push(null);
+      continue;
+    }
+    if ((inningsNum === 3 || inningsNum === 4) && balls.length === 0) {
+      inningsSummaries.push(null);
       continue;
     }
 
-    const sc = buildScorecard(balls, maxOvers);
+    const effectiveMaxOvers = inningsNum >= 3 ? 1 : maxOvers;
+    const sc = buildScorecard(balls, effectiveMaxOvers);
 
-    // Enrich player names
     const playerIds = [
       ...sc.batting.map((b) => b.playerId),
       ...sc.bowling.map((b) => b.playerId),
@@ -37,9 +47,11 @@ const recomputeSummary = async (matchId) => {
     const nameMap = {};
     users.forEach((u) => { nameMap[u._id.toString()] = u.name; });
 
-    const battingTeamId = inningsNum === 1
-      ? match.innings?.first?.battingTeam
-      : match.innings?.second?.battingTeam;
+    const battingTeamId =
+      inningsNum === 1 ? match.innings?.first?.battingTeam
+      : inningsNum === 2 ? match.innings?.second?.battingTeam
+      : inningsNum === 3 ? match.superOver?.first?.battingTeam
+      : match.superOver?.second?.battingTeam;
 
     inningsSummaries.push({
       battingTeam: battingTeamId,
@@ -49,25 +61,28 @@ const recomputeSummary = async (matchId) => {
       balls: sc.currentState.ball,
       extras: sc.extras,
       runRate: sc.runRate,
-      batting: sc.batting.map((b) => ({
-        ...b,
-        playerName: nameMap[b.playerId] || 'Unknown',
-      })),
-      bowling: sc.bowling.map((b) => ({
-        ...b,
-        playerName: nameMap[b.playerId] || 'Unknown',
-      })),
+      batting: sc.batting.map((b) => ({ ...b, playerName: nameMap[b.playerId] || 'Unknown' })),
+      bowling: sc.bowling.map((b) => ({ ...b, playerName: nameMap[b.playerId] || 'Unknown' })),
       fallOfWickets: sc.fallOfWickets,
     });
   }
 
   // Current innings state
-  const currentInningsNum = match.state === 'SECOND_INNINGS' || match.state === 'COMPLETED' ? 2 : 1;
+  const STATE_TO_INNINGS = {
+    FIRST_INNINGS: 1, INNINGS_BREAK: 1,
+    SECOND_INNINGS: 2,
+    SUPER_OVER_BREAK: 3, SUPER_OVER_1: 3, SUPER_OVER_INNINGS_BREAK: 3,
+    SUPER_OVER_2: 4,
+    COMPLETED: hasSuperOver ? 4 : 2,
+  };
+  const currentInningsNum = STATE_TO_INNINGS[match.state] || 1;
   const currentSummary = inningsSummaries[currentInningsNum - 1];
   const latestBall = await Ball.findOne({ matchId, innings: currentInningsNum, isDeleted: false })
     .sort({ over: -1, ball: -1 });
 
-  const target = match.innings?.second?.target || null;
+  const target = currentInningsNum === 4
+    ? (match.superOver?.second?.target || null)
+    : (match.innings?.second?.target || null);
   const currentRuns = currentSummary?.totalRuns || 0;
   const totalBallsBowled = (currentSummary?.overs || 0) * 6 + (currentSummary?.balls || 0);
   const remainingBalls = maxOvers * 6 - totalBallsBowled;

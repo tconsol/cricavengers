@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Animated, Dimensions,
-  Modal, ScrollView, Alert,
+  Modal, ScrollView, Alert, Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { icon: 'baseball-outline',  label: 'Matches',     route: '/(tabs)/matches' },
   { icon: 'trophy-outline',    label: 'Tournaments', route: '/(tabs)/tournaments' },
   { icon: 'people-outline',    label: 'Teams',       route: '/(tabs)/teams' },
+  { icon: 'shield-half-outline', label: 'My Teams',  route: '/(tabs)/teams?mine=true' },
   { icon: 'bar-chart-outline', label: 'Stats',       route: '/(tabs)/leaderboard' },
   { icon: 'person-outline',    label: 'Profile',     route: '/(tabs)/profile' },
 ] as const;
@@ -100,15 +101,22 @@ export default function DrawerMenu({ isOpen, onClose }: Props) {
           backgroundColor: '#1E3A5F',
           paddingTop: 52, paddingBottom: 24, paddingHorizontal: 20,
         }}>
-          <View style={{
-            width: 64, height: 64, borderRadius: 32,
-            backgroundColor: '#F59E0B',
-            alignItems: 'center', justifyContent: 'center', marginBottom: 10,
-          }}>
-            <Text style={{ fontSize: 26, fontWeight: '900', color: '#fff' }}>
-              {user?.name?.charAt(0)?.toUpperCase()}
-            </Text>
-          </View>
+          {user?.avatar ? (
+            <Image
+              source={{ uri: user.avatar }}
+              style={{ width: 64, height: 64, borderRadius: 32, marginBottom: 10, borderWidth: 2, borderColor: '#F59E0B' }}
+            />
+          ) : (
+            <View style={{
+              width: 64, height: 64, borderRadius: 32,
+              backgroundColor: '#F59E0B',
+              alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+            }}>
+              <Text style={{ fontSize: 26, fontWeight: '900', color: '#fff' }}>
+                {user?.name?.charAt(0)?.toUpperCase()}
+              </Text>
+            </View>
+          )}
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }} numberOfLines={1}>
             {user?.name}
           </Text>

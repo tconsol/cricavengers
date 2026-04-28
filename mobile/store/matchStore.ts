@@ -42,6 +42,7 @@ interface MatchState {
   createMatch: (data: Record<string, unknown>) => Promise<Match>;
   setToss: (matchId: string, data: { winner: string; decision: string }) => Promise<void>;
   startInnings: (matchId: string, data: Record<string, unknown>) => Promise<void>;
+  endMatchAsTie: (matchId: string) => Promise<void>;
   clearCurrentMatch: () => void;
   setCurrentMatch: (match: Match) => void;
   initSocketListeners: () => () => void;
@@ -92,7 +93,11 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   createMatch: async (data) => {
     const res = await api.post('/matches', data) as any;
     const match = res.data.match;
-    set((s) => ({ matches: [match, ...s.matches] }));
+    // Dedup: socket MATCH_CREATED fires before the HTTP response, so match may already be in store
+    set((s) => {
+      const exists = s.matches.some((m) => m._id === match._id);
+      return exists ? {} : { matches: [match, ...s.matches] };
+    });
     return match;
   },
 
@@ -106,10 +111,16 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     set({ currentMatch: res.data.match });
   },
 
+  endMatchAsTie: async (matchId) => {
+    const res = await api.post(`/matches/${matchId}/super-over/end-match`, {}) as any;
+    set({ currentMatch: res.data.match });
+  },
+
   clearCurrentMatch: () => set({ currentMatch: null }),
   setCurrentMatch: (match) => set({ currentMatch: match }),
 
   initSocketListeners: () => {
+    // New match created → add populated match to list (teams/logo already populated by backend)
     const unsubCreated = onEvent('MATCH_CREATED', (data: any) => {
       const match: Match = data.match;
       set((s) => {
@@ -118,15 +129,45 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       });
     });
 
+    // State change (toss done, innings start, innings break, completed, abandoned)
+    // Re-fetch both lists so home screen reflects the correct state without manual refresh
     const unsubState = onEvent('MATCH_STATE_CHANGED', (data: any) => {
       const updated: Match = data.match;
+      if (updated) {
+        set((s) => ({
+          currentMatch: s.currentMatch?._id === updated._id ? { ...s.currentMatch, ...updated } : s.currentMatch,
+        }));
+      }
+      // Re-fetch home data so Live Now / Recent Matches sections update instantly
+      get().fetchLiveMatches();
+      get().fetchMatches({ limit: '6' });
+    });
+
+    // Lightweight global score update — fired by backend after every ball
+    const unsubBall = onEvent('LIVE_SCORE_UPDATE', (data: any) => {
+      const matchId = (data?.matchId || '').toString();
+      if (!matchId) return;
       set((s) => ({
-        matches: s.matches.map((m) => m._id === updated._id ? { ...m, ...updated } : m),
-        liveMatches: s.liveMatches.map((m) => m._id === updated._id ? { ...m, ...updated } : m),
-        currentMatch: s.currentMatch?._id === updated._id ? { ...s.currentMatch, ...updated } : s.currentMatch,
+        liveMatches: s.liveMatches.map((m) => {
+          if (m._id !== matchId) return m;
+          const key = data.innings === 2 ? 'second' : 'first';
+          return {
+            ...m,
+            innings: {
+              ...m.innings,
+              [key]: {
+                ...(m.innings?.[key] || {}),
+                totalRuns: data.totalRuns ?? 0,
+                wickets: data.wickets ?? 0,
+                balls: (data.over ?? 0) * 6 + (data.ball ?? 0),
+              },
+            },
+          };
+        }),
       }));
     });
 
+    // Match completed → move out of live, update in matches list
     const unsubCompleted = onEvent('MATCH_COMPLETED', (data: any) => {
       set((s) => ({
         liveMatches: s.liveMatches.filter((m) => m._id !== data.matchId),
@@ -136,6 +177,9 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       }));
     });
 
-    return () => { unsubCreated(); unsubState(); unsubCompleted(); };
+    // BALL_REMOVED score revert is handled by the LIVE_SCORE_UPDATE emitted alongside it
+    const unsubRemove = onEvent('BALL_REMOVED', (_data: any) => { /* handled by LIVE_SCORE_UPDATE */ });
+
+    return () => { unsubCreated(); unsubState(); unsubBall(); unsubRemove(); unsubCompleted(); };
   },
 }));
