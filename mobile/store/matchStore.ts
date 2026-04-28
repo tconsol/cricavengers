@@ -23,6 +23,7 @@ interface Match {
   state: string;
   toss: any;
   innings: any;
+  superOver: any;
   result: any;
   createdBy: any;
   roles: any[];

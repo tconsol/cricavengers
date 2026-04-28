@@ -337,29 +337,59 @@ function InningsBreakModal({ visible, match, matchId }: {
 }
 
 // ── Match Complete Modal ──────────────────────────────────────
-function MatchCompleteModal({ visible, match, matchId }: {
-  visible: boolean; match: any; matchId: string;
+function MatchCompleteModal({ visible, match, matchId, onClose }: {
+  visible: boolean; match: any; matchId: string; onClose: () => void;
 }) {
+  const winnerId = (match?.result?.winner?._id || match?.result?.winner)?.toString();
+  const teamAId  = match?.teamA?._id?.toString();
+  const winnerName = winnerId
+    ? (winnerId === teamAId
+        ? (match?.teamA?.name || match?.teamA?.shortName)
+        : (match?.teamB?.name || match?.teamB?.shortName))
+    : null;
+  const isTie = match?.result?.winType === 'tie';
+
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 24, width: '100%', alignItems: 'center' }}>
-          <Text style={{ fontSize: 44, marginBottom: 12 }}>🏆</Text>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: '#1E3A5F', marginBottom: 8 }}>Match Complete!</Text>
+          <Text style={{ fontSize: 52, marginBottom: 8 }}>{isTie ? '🤝' : '🏆'}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#9CA3AF', letterSpacing: 1, marginBottom: 6 }}>MATCH OVER</Text>
+          {winnerName && !isTie ? (
+            <Text style={{ fontSize: 26, fontWeight: '900', color: '#1E3A5F', textAlign: 'center', marginBottom: 4 }}>
+              {winnerName}
+            </Text>
+          ) : null}
+          {isTie ? (
+            <Text style={{ fontSize: 22, fontWeight: '900', color: '#1E3A5F', textAlign: 'center', marginBottom: 4 }}>
+              Match Tied!
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#6B7280', marginBottom: 4 }}>won the match</Text>
+          )}
           {match?.result?.description ? (
-            <View style={{ backgroundColor: '#F0FDF4', borderRadius: 14, padding: 14, width: '100%', marginBottom: 20 }}>
-              <Text style={{ color: '#16A34A', fontWeight: '700', fontSize: 16, textAlign: 'center' }}>
+            <View style={{ backgroundColor: '#F0FDF4', borderRadius: 14, padding: 14, width: '100%', marginVertical: 16 }}>
+              <Text style={{ color: '#16A34A', fontWeight: '700', fontSize: 15, textAlign: 'center' }}>
                 {match.result.description}
               </Text>
             </View>
-          ) : null}
-          <TouchableOpacity
-            onPress={() => router.replace(`/match/${matchId}/live` as any)}
-            style={{ backgroundColor: '#1E3A5F', borderRadius: 16, paddingVertical: 16, width: '100%', alignItems: 'center' }}
-            activeOpacity={0.85}
-          >
-            <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>View Scorecard →</Text>
-          </TouchableOpacity>
+          ) : <View style={{ height: 16 }} />}
+          <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{ flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: '#F3F4F6', alignItems: 'center' }}
+              activeOpacity={0.85}
+            >
+              <Text style={{ color: '#374151', fontWeight: '700', fontSize: 15 }}>Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.replace(`/match/${matchId}/live` as any)}
+              style={{ flex: 2, backgroundColor: '#1E3A5F', borderRadius: 16, paddingVertical: 14, alignItems: 'center' }}
+              activeOpacity={0.85}
+            >
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 15 }}>View Scorecard →</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -467,6 +497,7 @@ export default function ScoringScreen() {
 
   // Ground picker flow — holds the ball payload while waiting for shot region
   const [showGroundPicker, setShowGroundPicker] = useState(false);
+  const [showGroundPickerPref, setShowGroundPickerPref] = useState(true);
   const [pendingBall, setPendingBall] = useState<any>(null);
   const [pickerCommentary, setPickerCommentary] = useState('');
 
@@ -520,9 +551,9 @@ export default function ScoringScreen() {
         });
       }
     });
-    const unsubState = onEvent('MATCH_STATE_CHANGED', (data: any) => {
+    const unsubState = onEvent('MATCH_STATE_CHANGED', async (data: any) => {
       if (data?.state === 'INNINGS_BREAK') setShowInningsBreak(true);
-      if (data?.state === 'COMPLETED') setShowMatchComplete(true);
+      if (data?.state === 'COMPLETED') { await fetchMatch(id!); setShowMatchComplete(true); }
       if (data?.state === 'SUPER_OVER_BREAK') setShowSuperOverBreak(true);
       if (data?.state === 'SUPER_OVER_INNINGS_BREAK') setShowSuperOverInningsBreak(true);
     });
@@ -601,11 +632,13 @@ export default function ScoringScreen() {
   };
 
   // Ground picker confirmed (region may be null if skipped)
-  const handleGroundConfirm = useCallback(async (region: string | null) => {
+  // ballDirectly bypasses pendingBall state when picker is auto-skipped
+  const handleGroundConfirm = useCallback(async (region: string | null, ballDirectly?: any) => {
     setShowGroundPicker(false);
-    if (!pendingBall) return;
+    const theBall = ballDirectly ?? pendingBall;
+    if (!theBall) return;
 
-    const ball = region ? { ...pendingBall, shotRegion: region } : pendingBall;
+    const ball = region ? { ...theBall, shotRegion: region } : theBall;
     setPendingBall(null);
 
     // Show commentary toast
@@ -622,17 +655,25 @@ export default function ScoringScreen() {
     await doSubmitBall(ball);
   }, [pendingBall, striker, bowler]);
 
-  // Stage a ball → open ground picker
+  // Stage a ball → open ground picker (or auto-skip for low-run events / when pref is off)
   const stageBall = useCallback((ball: any) => {
     if (!striker || !bowler) {
       Alert.alert('Setup Required', 'Please set batsmen and bowler first');
       return;
     }
+    const isNoBall = ball.extras?.type === 'no_ball';
+    const isHighlight = (ball.runs ?? 0) >= 4 || isNoBall;
     const commentary = generateCommentary(ball, strikerName, bowlerName);
-    setPendingBall(ball);
-    setPickerCommentary(commentary);
-    setShowGroundPicker(true);
-  }, [striker, bowler]);
+
+    if (showGroundPickerPref && isHighlight) {
+      setPendingBall(ball);
+      setPickerCommentary(commentary);
+      setShowGroundPicker(true);
+    } else {
+      // Skip picker — submit directly via handleGroundConfirm with ball bypass
+      handleGroundConfirm(null, ball);
+    }
+  }, [striker, bowler, showGroundPickerPref, strikerName, bowlerName]);
 
   // Normal run button pressed
   const handleBallPress = useCallback((runs: number) => {
@@ -780,10 +821,13 @@ export default function ScoringScreen() {
 
     // Read fresh state from store — closure snapshot is stale after async addBall
     const freshState = useScoringStore.getState().liveState;
-    const totalOvers = useMatchStore.getState().currentMatch?.totalOvers ?? 99;
+    const currentMatchState = useMatchStore.getState().currentMatch?.state;
+    const isSuperOverInnings = currentMatchState === 'SUPER_OVER_1' || currentMatchState === 'SUPER_OVER_2';
+    const totalOvers = isSuperOverInnings ? 1 : (useMatchStore.getState().currentMatch?.totalOvers ?? 99);
+    const maxWickets = isSuperOverInnings ? 2 : 10;
     const overEnded = (freshState?.ball ?? 0) === 0 && (freshState?.over ?? 0) > 0;
     const allOversUp = overEnded && (freshState?.over ?? 0) >= totalOvers;
-    const allOut     = (freshState?.wickets ?? 0) >= 10;
+    const allOut     = (freshState?.wickets ?? 0) >= maxWickets;
 
     if (allOversUp || allOut) {
       await _checkInningsEnd();
@@ -983,6 +1027,26 @@ export default function ScoringScreen() {
           />
         ) : (
           <>
+            {/* Shot region picker toggle */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, paddingHorizontal: 2 }}>
+              <Text style={{ fontSize: 10, color: '#6B7280', fontWeight: '600', marginRight: 8 }}>📍 Shot Region</Text>
+              <TouchableOpacity
+                onPress={() => setShowGroundPickerPref(p => !p)}
+                activeOpacity={0.8}
+                style={{
+                  width: 40, height: 22, borderRadius: 11,
+                  backgroundColor: showGroundPickerPref ? '#3B82F6' : '#D1D5DB',
+                  justifyContent: 'center', paddingHorizontal: 2,
+                }}
+              >
+                <View style={{
+                  width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff',
+                  transform: [{ translateX: showGroundPickerPref ? 18 : 0 }],
+                  shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 2, elevation: 2,
+                }} />
+              </TouchableOpacity>
+            </View>
+
             {/* Row 1: 0 1 2 3 */}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
               {[0, 1, 2, 3].map((r) => (
@@ -1167,6 +1231,7 @@ export default function ScoringScreen() {
         visible={showMatchComplete}
         match={currentMatch}
         matchId={id!}
+        onClose={() => setShowMatchComplete(false)}
       />
 
       <SuperOverBreakModal

@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 const addBallSchema = Joi.object({
-  innings: Joi.number().valid(1, 2).required(),
+  innings: Joi.number().valid(1, 2, 3, 4).required(),
   batsman: Joi.string().length(24).required(),
   bowler: Joi.string().length(24).required(),
   runs: Joi.number().integer().min(0).max(6).required(),
@@ -48,13 +48,13 @@ const editBallSchema = Joi.object({
 });
 
 const setBatsmanSchema = Joi.object({
-  innings: Joi.number().valid(1, 2).required(),
+  innings: Joi.number().valid(1, 2, 3, 4).required(),
   position: Joi.string().valid('striker', 'nonStriker').required(),
   playerId: Joi.string().length(24).required(),
 });
 
 const setBowlerSchema = Joi.object({
-  innings: Joi.number().valid(1, 2).required(),
+  innings: Joi.number().valid(1, 2, 3, 4).required(),
   playerId: Joi.string().length(24).required(),
 });
 
