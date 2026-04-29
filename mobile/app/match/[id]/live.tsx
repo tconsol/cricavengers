@@ -288,6 +288,26 @@ function BowlerCardModal({ bowler, onClose }: { bowler: any; onClose: () => void
 
 type PlayerEntry = { id: string; text: string; type: 'batsman' | 'bowler' };
 
+// Resolve winner name from match data and build a human-readable result string
+function buildResultText(match: any): string {
+  const desc = match?.result?.description;
+  if (!desc) return '';
+  const winnerId = (match?.result?.winner?._id || match?.result?.winner)?.toString();
+  if (!winnerId) return desc;
+  const teamAId = match?.teamA?._id?.toString();
+  const winnerTeam = winnerId === teamAId ? match?.teamA : match?.teamB;
+  const winnerName = winnerTeam?.shortName || winnerTeam?.name;
+  if (!winnerName || desc.startsWith(winnerName)) return desc;
+  const { winMargin, winType } = match.result;
+  const isSO = desc.includes('Super Over');
+  const suffix = isSO ? ' (Super Over)' : '';
+  if (winType === 'wickets' && winMargin != null)
+    return `${winnerName} won by ${winMargin} wicket${winMargin !== 1 ? 's' : ''}${suffix}`;
+  if (winType === 'runs' && winMargin != null)
+    return `${winnerName} won by ${winMargin} run${winMargin !== 1 ? 's' : ''}${suffix}`;
+  return `${winnerName} won · ${desc}`;
+}
+
 function LiveTab({ match, summary, recentBalls, playerCommentary }: { match: any; summary: any; recentBalls: any[]; playerCommentary: PlayerEntry[] }) {
   const cs = summary?.currentState;
   const inningsNum = cs?.innings ?? 1;
@@ -476,9 +496,9 @@ function LiveTab({ match, summary, recentBalls, playerCommentary }: { match: any
             )}
           </View>
         </View>
-        {isCompleted && match?.result?.description && (
+        {isCompleted && buildResultText(match) && (
           <View style={{ marginTop: 10, backgroundColor: 'rgba(22,163,74,0.18)', borderRadius: 10, padding: 10 }}>
-            <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 13 }}>🏆 {match.result.description}</Text>
+            <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 13 }}>🏆 {buildResultText(match)}</Text>
           </View>
         )}
       </View>
@@ -609,7 +629,8 @@ function LiveTab({ match, summary, recentBalls, playerCommentary }: { match: any
               const isLegal = b.extras?.type !== 'wide' && b.extras?.type !== 'no_ball';
               if (isLegal) legalCnt++;
               // Legal ball → its slot; Wide/NB → the upcoming slot (legalCnt+1) it "borrows"
-              legalLabel.set(b._id || `${b.over}-${b.ball}`, `${b.over}.${isLegal ? legalCnt : legalCnt + 1}`);
+              // Display over as 1-indexed (over 0 → "1.x")
+              legalLabel.set(b._id || `${b.over}-${b.ball}`, `${b.over + 1}.${isLegal ? legalCnt : legalCnt + 1}`);
             }
             // Group by over, newest first
             const overMap = new Map<number, any[]>();
@@ -996,20 +1017,57 @@ function OverScroller({ perOverData }: { perOverData: any[] }) {
 
 // ─── InningsProgressionBar ────────────────────────────────────
 
-function InningsProgressionBar({ overs, totalOvers, color }: { overs: any[]; totalOvers: number; color: string }) {
+function InningsProgressionBar({ overs, totalOvers, color, fallbackTotal }: {
+  overs: any[]; totalOvers: number; color: string; fallbackTotal?: number;
+}) {
+  // Super over: single 1-over bar — handle empty overs or 0-indexed numbering
+  if (totalOvers <= 1) {
+    const totalRuns = overs.reduce((s: number, o: any) => s + (o.runs ?? 0), 0) || (fallbackTotal ?? 0);
+    const totalWickets = overs.reduce((s: number, o: any) => s + (o.wickets ?? 0), 0);
+    return (
+      <View style={{ gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ width: 40, fontSize: 11, color: '#9CA3AF', fontWeight: '600' }}>Ov 1</Text>
+          <View style={{ flex: 1, height: 14, backgroundColor: '#F3F4F6', borderRadius: 7, overflow: 'hidden' }}>
+            <View style={{ width: totalRuns > 0 ? '100%' : '0%', height: '100%', backgroundColor: color, borderRadius: 7 }} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 2, minWidth: 30 }}>
+            {Array.from({ length: Math.min(totalWickets, 5) }).map((_, wi) => (
+              <View key={wi} style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 7, fontWeight: '900' }}>W</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={{ width: 52, textAlign: 'right', fontSize: 11, fontWeight: '700', color: '#374151' }}>{totalRuns} runs</Text>
+        </View>
+      </View>
+    );
+  }
+
   const phases = [
     { label: '1–6', start: 1, end: 6 },
     { label: '7–14', start: 7, end: 14 },
     { label: `15–${totalOvers}`, start: 15, end: totalOvers },
   ];
   const phaseData = phases.map((ph) => {
-    const phOvers = overs.filter((o) => o.over >= ph.start && o.over <= ph.end);
+    // Accept both 0-indexed (over 0 = first over) and 1-indexed (over 1 = first over)
+    const phOvers = overs.filter((o: any) => {
+      const n = o.over;
+      return (n >= ph.start && n <= ph.end) || (n + 1 >= ph.start && n + 1 <= ph.end && n < ph.start);
+    });
     return {
       label: ph.label,
-      runs: phOvers.reduce((s: number, o: any) => s + o.runs, 0),
-      wickets: phOvers.reduce((s: number, o: any) => s + o.wickets, 0),
+      runs: phOvers.reduce((s: number, o: any) => s + (o.runs ?? 0), 0),
+      wickets: phOvers.reduce((s: number, o: any) => s + (o.wickets ?? 0), 0),
     };
   });
+
+  // If all phases are 0 but fallbackTotal > 0, put everything in phase 1
+  const totalFromPhases = phaseData.reduce((s, p) => s + p.runs, 0);
+  if (totalFromPhases === 0 && (fallbackTotal ?? 0) > 0) {
+    phaseData[0].runs = fallbackTotal!;
+  }
+
   const maxRuns = Math.max(...phaseData.map((p) => p.runs), 1);
 
   return (
@@ -1199,9 +1257,9 @@ function SummaryTab({ matchId, match }: { matchId: string; match: any }) {
             </View>
           </View>
         )}
-        {match?.result?.description && (
+        {buildResultText(match) && (
           <View style={{ backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7, alignSelf: 'center', marginTop: innings[2] ? 12 : 0 }}>
-            <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 13 }}>{match.result.description}</Text>
+            <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 13 }}>{buildResultText(match)}</Text>
           </View>
         )}
       </View>
@@ -1688,7 +1746,12 @@ function GraphsTab({ matchId, match }: { matchId: string; match: any }) {
                 {inn.worm?.[inn.worm.length - 1]?.totalRuns ?? 0} runs
               </Text>
             </View>
-            <InningsProgressionBar overs={inn.overs || []} totalOvers={totalOvers} color={idx === 0 ? '#3B82F6' : '#06B6D4'} />
+            <InningsProgressionBar
+              overs={inn.overs || []}
+              totalOvers={idx >= 2 ? 1 : totalOvers}
+              fallbackTotal={inn.totalRuns ?? inn.worm?.[inn.worm?.length - 1]?.totalRuns ?? 0}
+              color={idx === 0 ? '#3B82F6' : idx === 1 ? '#06B6D4' : '#F59E0B'}
+            />
           </View>
         ))}
       </View>
@@ -1791,7 +1854,7 @@ function InfoTab({ match, matchId }: { match: any; matchId: string }) {
     { label: 'Venue', value: match?.venue || '—' },
     { label: 'Toss', value: match?.toss ? `${tossWinner} opt to ${match.toss.decision}` : 'Not done' },
     { label: 'Status', value: STATE_LABEL[match?.state] || match?.state },
-    { label: 'Result', value: match?.result?.description || '—' },
+    { label: 'Result', value: buildResultText(match) || '—' },
   ];
 
   const isOrganizer = (match?.createdBy?._id || match?.createdBy)?.toString() === user?._id?.toString();
@@ -1847,10 +1910,10 @@ function InfoTab({ match, matchId }: { match: any; matchId: string }) {
           </View>
         </View>
       </View>
-      {match?.result?.description && (
+      {buildResultText(match) && (
         <View style={{ backgroundColor: '#F0FDF4', marginHorizontal: 12, marginTop: 12, borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Text style={{ fontSize: 24 }}>🏆</Text>
-          <Text style={{ flex: 1, color: '#15803D', fontWeight: '700', fontSize: 14 }}>{match.result.description}</Text>
+          <Text style={{ flex: 1, color: '#15803D', fontWeight: '700', fontSize: 14 }}>{buildResultText(match)}</Text>
         </View>
       )}
       <View style={{ backgroundColor: '#fff', marginTop: 12 }}>
@@ -2187,7 +2250,10 @@ export default function LiveScreen() {
     });
 
     const unsubState = onMatchEvent('MATCH_STATE_CHANGED', (data: any) => {
-      fetchMatch(id!);
+      // Immediately apply match from socket payload — no HTTP round-trip latency for viewers
+      if (data?.match) {
+        useMatchStore.setState({ currentMatch: data.match });
+      }
       fetchSummary(id!);
       if (data?.state === 'SUPER_OVER_BREAK') setShowSuperOverBreak(true);
       if (data?.state === 'SUPER_OVER_INNINGS_BREAK') {

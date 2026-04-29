@@ -239,7 +239,23 @@ export default function MatchCard({ match, onPress, isLive = false, isOwner = fa
         <View style={{ backgroundColor: '#F0FDF4', paddingHorizontal: 14, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Ionicons name="trophy" size={12} color="#16A34A" />
           <Text style={{ fontSize: 12, fontWeight: '700', color: '#16A34A' }}>
-            {match.result.description}
+            {(() => {
+              const desc = match.result.description;
+              const winnerId = (match.result.winner?._id || match.result.winner)?.toString();
+              if (!winnerId) return desc;
+              const teamAId = match.teamA?._id?.toString();
+              const winnerTeam = winnerId === teamAId ? match.teamA : match.teamB;
+              const winnerName = winnerTeam?.shortName || winnerTeam?.name;
+              if (!winnerName || desc.startsWith(winnerName)) return desc;
+              const { winMargin, winType } = match.result;
+              const isSO = desc.includes('Super Over');
+              const suffix = isSO ? ' (Super Over)' : '';
+              if (winType === 'wickets' && winMargin != null)
+                return `${winnerName} won by ${winMargin} wicket${winMargin !== 1 ? 's' : ''}${suffix}`;
+              if (winType === 'runs' && winMargin != null)
+                return `${winnerName} won by ${winMargin} run${winMargin !== 1 ? 's' : ''}${suffix}`;
+              return `${winnerName} won · ${desc}`;
+            })()}
           </Text>
         </View>
       ) : isUpcoming ? (

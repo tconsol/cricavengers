@@ -257,7 +257,7 @@ const endInnings = async (matchId, userId) => {
     match.superOver.second.target = match.superOver.first.totalRuns + 1;
   } else if (match.state === 'SUPER_OVER_2') {
     match.superOver.second.isCompleted = true;
-    _computeSuperOverResult(match);
+    await _computeSuperOverResult(match);
     match.transitionTo('COMPLETED');
   } else {
     throw new AppError('Cannot end innings in current match state', 400, 'INVALID_STATE');
@@ -280,23 +280,32 @@ const endInnings = async (matchId, userId) => {
   return match;
 };
 
-const _computeSuperOverResult = (match) => {
+const _getTeamName = async (teamId) => {
+  const team = await Team.findById(teamId).select('name shortName').lean();
+  return team?.shortName || team?.name || 'Team';
+};
+
+const _computeSuperOverResult = async (match) => {
   const first = match.superOver.first;
   const second = match.superOver.second;
   const target = first.totalRuns + 1;
   if (second.totalRuns >= target) {
+    const margin = 2 - second.wickets;
+    const winnerName = await _getTeamName(second.battingTeam);
     match.result = {
       winner: second.battingTeam,
       winType: 'wickets',
-      winMargin: 2 - second.wickets,
-      description: `Super Over: ${2 - second.wickets} wicket${2 - second.wickets !== 1 ? 's' : ''} win`,
+      winMargin: margin,
+      description: `${winnerName} won by ${margin} wicket${margin !== 1 ? 's' : ''} (Super Over)`,
     };
   } else if (second.totalRuns < first.totalRuns) {
+    const margin = first.totalRuns - second.totalRuns;
+    const winnerName = await _getTeamName(first.battingTeam);
     match.result = {
       winner: first.battingTeam,
       winType: 'runs',
-      winMargin: first.totalRuns - second.totalRuns,
-      description: `Super Over: ${first.totalRuns - second.totalRuns} run${first.totalRuns - second.totalRuns !== 1 ? 's' : ''} win`,
+      winMargin: margin,
+      description: `${winnerName} won by ${margin} run${margin !== 1 ? 's' : ''} (Super Over)`,
     };
   } else {
     match.result = { winner: null, winType: 'tie', winMargin: 0, description: 'Super Over tied — match tied' };
@@ -309,18 +318,22 @@ const _computeMatchResult = async (match) => {
   const target = first.totalRuns + 1;
 
   if (second.totalRuns >= target) {
+    const margin = 10 - second.wickets;
+    const winnerName = await _getTeamName(second.battingTeam);
     match.result = {
       winner: second.battingTeam,
       winType: 'wickets',
-      winMargin: 10 - second.wickets,
-      description: `${10 - second.wickets} wicket${10 - second.wickets !== 1 ? 's' : ''} win`,
+      winMargin: margin,
+      description: `${winnerName} won by ${margin} wicket${margin !== 1 ? 's' : ''}`,
     };
   } else if (second.totalRuns < first.totalRuns) {
+    const margin = first.totalRuns - second.totalRuns;
+    const winnerName = await _getTeamName(first.battingTeam);
     match.result = {
       winner: first.battingTeam,
       winType: 'runs',
-      winMargin: first.totalRuns - second.totalRuns,
-      description: `${first.totalRuns - second.totalRuns} run${first.totalRuns - second.totalRuns !== 1 ? 's' : ''} win`,
+      winMargin: margin,
+      description: `${winnerName} won by ${margin} run${margin !== 1 ? 's' : ''}`,
     };
   } else {
     match.result = { winner: null, winType: 'tie', winMargin: 0, description: 'Match tied' };
